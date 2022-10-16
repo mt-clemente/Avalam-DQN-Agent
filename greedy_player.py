@@ -33,7 +33,7 @@ class GreedyAgent(Agent):
         
         board = dict_to_board(percepts)
         actions = list(board.get_actions())
-        print('step', step, 'player', player, 'actions', len(actions))
+        #print('step', step, 'player', player, 'actions', len(actions))
                 
         def predict_score(board, action):
             board = board.clone()
@@ -48,7 +48,7 @@ class GreedyAgent(Agent):
         srt = {b: i for i, b in enumerate(order)}
         sorted_actions = sorted(actions, key=lambda a: srt[predict_score(board, a)])
         
-        print(sorted_actions[0])
+        #print(sorted_actions[0])
         if decision(self.probability):
             return sorted_actions[0]      
         else :
