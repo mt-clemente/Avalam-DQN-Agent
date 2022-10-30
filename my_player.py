@@ -83,8 +83,6 @@ def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, be
         if player == 1 :
 
             if depth == 0 and ab > val :
-                print("1 ",val,ab)
-                print("nbm")
                 best_move.update(act)
                 
 
@@ -96,7 +94,6 @@ def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, be
         else:
 
             if depth == 0 and ab < val:
-                print("2 ",val,ab)
                 best_move.update(act)
 
             val = min(val, ab)
