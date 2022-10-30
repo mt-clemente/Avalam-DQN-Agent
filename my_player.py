@@ -57,6 +57,7 @@ class MyAgent(Agent):
         self.EPS_DECAY = 200
         self.TARGET_UPDATE = 10
         self.steps_done = 0
+        self.eog_flag = 0
 
 
         board_height = 9
@@ -81,7 +82,7 @@ class MyAgent(Agent):
 
 
 
-    def play(self, percepts, player, step, time_left, _train = False):
+    def play(self, percepts, player, step, time_left, _train = True):
         """
         This function is used to play a move according
         to the percepts, player and time left provided as input.
@@ -96,6 +97,11 @@ class MyAgent(Agent):
         :return: an action
             eg; (1, 4, 1 , 3) to move tower on cell (1,4) to cell (1,3)
         """
+
+        if step < self.eog_flag:
+            self.num_episode += 1
+
+        self.eog_flag = step
         
         board = dict_to_board(percepts)
 
@@ -124,13 +130,18 @@ class MyAgent(Agent):
         
         # random exploration
         else:
-            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move, heuristic=None))
+            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move, heuristic=self.policy_net))
 
+        try:
+            # calculate the reward based on the selected move
+            reward = calc_reward(board,best_move.move)
 
-        # calculate the reward based on the selected move
-        reward = calc_reward(board,best_move)
+        except:
+            raise BaseException("1")
+        
+        print(reward,file = sys.stderr)
         reward = torch.tensor([reward], device=self.device)
-
+            
         # Observe new state
         next_board = board.clone()
         next_board.play_action(best_move.move)
@@ -139,7 +150,6 @@ class MyAgent(Agent):
 
         # Store the transition in memory
         self.memory.push(board, best_move.move, next_board, reward)
-
         # Move to the next board
         board = next_board
 
@@ -164,7 +174,7 @@ class MyAgent(Agent):
 
 
 def calc_reward(state: Board, action):
-    state.play_action(action).get_score()
+    return state.play_action(action).get_score()
 
 
 def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, best_move: BestMove, action = None, heuristic: DQN = None):
@@ -176,12 +186,10 @@ def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, be
         else:
             temp = torch.tensor(state.m).float()
             temp = temp[None,None]
-            f = open("AAAa","a")
-            f.write(str(heuristic.state_dict()))
-            f.write(str(heuristic(temp)))
-            f.close()
-            return heuristic(temp)
-
+            try:
+                return heuristic(temp)
+            except:
+                raise ValueError
     actions = state.get_actions()
     val = - player * 999
     while 1:
@@ -200,8 +208,6 @@ def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, be
         if player == 1 :
 
             if depth == 0 and ab > val :
-                print("1 ",val,ab)
-                print("nbm")
                 best_move.update(act)
                 
 
@@ -213,7 +219,6 @@ def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, be
         else:
 
             if depth == 0 and ab < val:
-                print("2 ",val,ab)
                 best_move.update(act)
 
             val = min(val, ab)
