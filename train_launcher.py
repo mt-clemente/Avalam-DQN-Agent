@@ -4,22 +4,26 @@ import os
 import psutil
 
 #chose ports
-port1 = 8001
-port2 = 8002
+port1 = 8003
+port2 = 8004
 
 #initialize agents
-sp1 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port1}",shell=True,stdout=subprocess.DEVNULL,stderr=open("logs/players/log1.txt","w"))
+sp1 = subprocess.Popen(f"python3 my_player.py -b localhost --port {port1}",shell=True,stdout=subprocess.DEVNULL,stderr=open("logs/players/log1.txt","w"))
 sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=open("logs/players/log2.txt","w"))
 time.sleep(2.5)
 
 #training parameters
-episodes = 100
+episodes = 5
 start = time.time()
 
+f = open(f"logs/game/log.txt","w")
+
 for i in range(episodes):
-    s = subprocess.Popen(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=open(f"logs/game/log.txt","a"))
+    s = subprocess.call(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=f)
     print(i,'th episode done')
+    
 end = time.time()
+f.close()
 
 
 print("Total time = ", end - start)

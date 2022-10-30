@@ -1,13 +1,8 @@
 from collections import deque, namedtuple
-from matplotlib import pyplot as plt
 import random
-import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
-
-from my_player import MyAgent
 
 
 """ Transition = namedtuple('Transition',
@@ -35,20 +30,20 @@ class ReplayMemory(object):
 
 class DQN(nn.Module):
 
-    #TODO: fix h and w
+    #TODO: device not handled properly
     def __init__(self, h, w, outputs,device):
         super(DQN, self).__init__()
         self.device = device
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=5, stride=2)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
+        self.conv1 = nn.Conv2d(1, 9, kernel_size=3)
+        self.bn1 = nn.BatchNorm2d(9)
+        self.conv2 = nn.Conv2d(9, 32, kernel_size=3, stride=1)
         self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32, 1, kernel_size=5, stride=2)
+        self.conv3 = nn.Conv2d(32, 1, kernel_size=3, stride=1)
         self.bn3 = nn.BatchNorm2d(1)
 
         # Number of Linear input connections depends on output of conv2d layers
         # and therefore the input image size, so compute it.
-        def conv2d_size_out(size, kernel_size=5, stride=2):
+        def conv2d_size_out(size, kernel_size=3, stride=1):
             return (size - (kernel_size - 1) - 1) // stride + 1
         convw = conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
         convh = conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
@@ -131,7 +126,7 @@ def select_action(state: Board):
         return torch.tensor([[random.randrange(n_outputs)]], device=device, dtype=torch.long) """
 
 
-def optimize_model(agent: MyAgent):
+def optimize_model(agent):
     if len(agent.memory) < agent.BATCH_SIZE:
         return
     transitions = agent.memory.sample(agent.BATCH_SIZE)

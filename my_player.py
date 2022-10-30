@@ -19,11 +19,16 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 """
 
 from collections import namedtuple
-from random import random
+from datetime import datetime
+import random
+import sys
+import traceback
 import numpy as np
-from DQN_heuristics import DQN,ReplayMemory,optim, optimize_model
+from DQN_heuristics import DQN,ReplayMemory, optimize_model
 from avalam import *
 import torch
+import torch.optim as optim
+
 
 class BestMove():
     def __init__(self) -> None:
@@ -38,6 +43,7 @@ class MyAgent(Agent):
     """My Avalam agent."""
     def __init__(self) -> None:
 
+        self.date = datetime.now()
         self.Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
 
@@ -53,21 +59,24 @@ class MyAgent(Agent):
         self.steps_done = 0
 
 
-        # Might change? 
         board_height = 9
         board_width = 9
 
+        #try to load the model obtained from previous training
         try :
-            self.policy_net = torch.load()
+            self.policy_net = DQN(board_height, board_width, 1, self.device).to(self.device) 
+            self.policy_net.load_state_dict(torch.load('models/curr_DQN.pt'))
         except FileNotFoundError:
             self.policy_net = DQN(board_height, board_width, 1, self.device).to(self.device) 
         
-        self.target_net = DQN(board_height, board_width, 1).to(self.device)
+        self.target_net = DQN(board_height, board_width, 1,self.device).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
+
         self.optimizer = optim.RMSprop(self.policy_net.parameters())
         self.memory = ReplayMemory(10000,self.Transition)
+
 
 
 
@@ -90,13 +99,13 @@ class MyAgent(Agent):
         
         board = dict_to_board(percepts)
 
-        MAX_DEPTH = 2 + step // 25
+        MAX_DEPTH = 2 #+ step // 25
 
         best_move = BestMove()
 
 
 
-        # play normally
+        # play normally  using the policy net as heuristic
         if not _train:
             abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move,heuristic=self.policy_net))
             return best_move.move
@@ -104,19 +113,21 @@ class MyAgent(Agent):
 
         # ----------- TRAIN THE MODEL -----------
 
-            
-        # Select and perform an action
-
         # epsilon policy
         eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
         np.exp(-1. * self.steps_done / self.EPS_DECAY)
         self.steps_done += 1
 
-        if random.random() > eps_threshold:  
-            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move,heuristic=self.policy_net))
+        # using policy net
+        if random.random() > eps_threshold: 
+            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move,heuristic = self.policy_net)) 
+        
+        # random exploration
         else:
-            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move))
-            
+            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move, heuristic=None))
+
+
+        # calculate the reward based on the selected move
         reward = calc_reward(board,best_move)
         reward = torch.tensor([reward], device=self.device)
 
@@ -139,10 +150,14 @@ class MyAgent(Agent):
 
         #TODO: handle end of training
         #TODO: handle number of episodes -- see how the end of the match is handled
+
         # Update the target network, copying all weights and biases in DQN
+        # save the policy net
         if self.num_episode % self.TARGET_UPDATE == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
+            torch.save(self.policy_net.state_dict(),f'models/mod_{self.date}/pt')
+            torch.save(self.policy_net.state_dict(),f'models/currDQN/pt')
 
 
         return best_move.move
@@ -152,13 +167,20 @@ def calc_reward(state: Board, action):
     state.play_action(action).get_score()
 
 
-def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, best_move: BestMove, heuristic = None):
+def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, best_move: BestMove, action = None, heuristic: DQN = None):
     
+
     if depth == max_depth or state.is_finished():
         if not heuristic:
             return state.get_score() * 5
         else:
-            return heuristic(state)
+            temp = torch.tensor(state.m).float()
+            temp = temp[None,None]
+            f = open("AAAa","a")
+            f.write(str(heuristic.state_dict()))
+            f.write(str(heuristic(temp)))
+            f.close()
+            return heuristic(temp)
 
     actions = state.get_actions()
     val = - player * 999
@@ -173,7 +195,7 @@ def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, be
         temp = state.clone()
         temp = temp.play_action(act)
 
-        ab = alphabeta(temp, depth + 1, max_depth,-player, alpha, beta, best_move, act)
+        ab = alphabeta(temp, depth + 1, max_depth,-player, alpha, beta, best_move, action = act, heuristic= heuristic)
 
         if player == 1 :
 
