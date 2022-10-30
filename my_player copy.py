@@ -18,10 +18,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 """
 
-from collections import namedtuple
-from random import random
-import numpy as np
-from DQN_heuristics import DQN,ReplayMemory,optim, optimize_model
+from DQN_heuristics import calc_reward
 from avalam import *
 import torch
 
@@ -36,41 +33,6 @@ class BestMove():
 class MyAgent(Agent):
 
     """My Avalam agent."""
-    def __init__(self) -> None:
-
-        self.Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
-
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        self.num_episode = 0
-        self.BATCH_SIZE = 128
-        self.GAMMA = 0.999
-        self.EPS_START = 0.9
-        self.EPS_END = 0.05
-        self.EPS_DECAY = 200
-        self.TARGET_UPDATE = 10
-        self.steps_done = 0
-
-
-        #FIXME:
-        board_height = 20
-        board_width = 20
-
-        try :
-            self.policy_net = torch.load()
-        except FileNotFoundError:
-            self.policy_net = DQN(board_height, board_width, 1, self.device).to(self.device) 
-        
-        self.target_net = DQN(board_height, board_width, 1).to(self.device)
-        self.target_net.load_state_dict(self.policy_net.state_dict())
-        self.target_net.eval()
-
-        self.optimizer = optim.RMSprop(self.policy_net.parameters())
-        self.memory = ReplayMemory(10000,self.Transition)
-
-
-
 
     def play(self, percepts, player, step, time_left, _train = False):
         """
@@ -95,10 +57,10 @@ class MyAgent(Agent):
         best_move = BestMove()
 
 
+        abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move))
 
         # play normally
         if not _train:
-            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move,heuristic=self.policy_net))
             return best_move.move
 
 
@@ -106,19 +68,9 @@ class MyAgent(Agent):
 
             
         # Select and perform an action
-
-        # epsilon policy
-        eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
-        np.exp(-1. * self.steps_done / self.EPS_DECAY)
-        self.steps_done += 1
-
-        if random.random() > eps_threshold:  
-            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move,heuristic=self.policy_net))
-        else:
-            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move))
-            
-        reward = calc_reward(board,best_move)
-        reward = torch.tensor([reward], device=self.device)
+        
+        reward = calc_reward(board)
+        reward = torch.tensor([reward], device=device)
 
         # Observe new state
         next_board = board.clone()
@@ -127,29 +79,50 @@ class MyAgent(Agent):
         #TODO: handle end of game issues
 
         # Store the transition in memory
-        self.memory.push(board, best_move.move, next_board, reward)
+        memory.push(board, best_move.move, next_board, reward)
 
         # Move to the next board
         board = next_board
 
         # Perform one step of the optimization (on the policy network)
-        optimize_model(self)
+        optimize_model()
 
+        if done:
+            episode_scores.append(t + 1)
+            plot_scores()
+            break
 
-
-        #TODO: handle end of training
-        #TODO: handle number of episodes -- see how the end of the match is handled
         # Update the target network, copying all weights and biases in DQN
-        if self.num_episode % self.TARGET_UPDATE == 0:
-            self.target_net.load_state_dict(self.policy_net.state_dict())
+        if i_episode % TARGET_UPDATE == 0:
+            target_net.load_state_dict(policy_net.state_dict())
 
 
 
         return best_move.move
 
 
-def calc_reward(state: Board, action):
-    state.play_action(action).get_score()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, best_move: BestMove, heuristic = None):
