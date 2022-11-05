@@ -103,7 +103,7 @@ class MyAgent(Agent):
 
         self.eog_flag = step
         
-        board = dict_to_board(percepts)
+        board: Board = dict_to_board(percepts)
 
         MAX_DEPTH = 2 #+ step // 25
 
@@ -114,6 +114,7 @@ class MyAgent(Agent):
         # play normally  using the policy net as heuristic
         if not _train:
             abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move,heuristic=self.policy_net))
+            print(best_move.move)
             return best_move.move
 
 
@@ -134,7 +135,7 @@ class MyAgent(Agent):
 
         try:
             # calculate the reward based on the selected move
-            reward = calc_reward(board,best_move.move)
+            reward = calc_reward(board.clone(),best_move.move)
 
         except:
             raise BaseException("1")
@@ -166,8 +167,8 @@ class MyAgent(Agent):
         if self.num_episode % self.TARGET_UPDATE == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
-            torch.save(self.policy_net.state_dict(),f'models/mod_{self.date}/pt')
-            torch.save(self.policy_net.state_dict(),f'models/currDQN/pt')
+            torch.save(self.policy_net.state_dict(),f'models/mod_{self.date}.pt')
+            torch.save(self.policy_net.state_dict(),f'models/currDQN.pt')
 
 
         return best_move.move
@@ -176,7 +177,7 @@ class MyAgent(Agent):
 def calc_reward(state: Board, action):
     return state.play_action(action).get_score()
 
-
+# Alpha Beta pruning algorithm, best_move is modified in place
 def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, best_move: BestMove, action = None, heuristic: DQN = None):
     
 
