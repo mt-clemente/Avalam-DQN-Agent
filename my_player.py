@@ -22,13 +22,14 @@ from collections import namedtuple
 from datetime import datetime
 import random
 import sys
-import traceback
+import torch.nn as nn
 import numpy as np
-from DQN_heuristics import DQN,ReplayMemory, optimize_model
+from DQN_heuristics import DQN,ReplayMemory
 from avalam import *
 import torch
 import torch.optim as optim
 
+INF = 2**32-1
 
 class BestMove():
     def __init__(self) -> None:
@@ -50,13 +51,13 @@ class MyAgent(Agent):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_episode = 0
-        self.BATCH_SIZE = 128
-        self.GAMMA = 0.999
+        self.BATCH_SIZE = 10
+        self.GAMMA = 0.99
         self.EPS_START = 0.9
         self.EPS_END = 0.05
         self.EPS_DECAY = 200
-        self.TARGET_UPDATE = 10
-        self.steps_done = 0
+        self.TARGET_UPDATE = 5
+        self.steps_done = 10000
         self.eog_flag = 0
 
 
@@ -105,7 +106,7 @@ class MyAgent(Agent):
         
         board: Board = dict_to_board(percepts)
 
-        MAX_DEPTH = 2 #+ step // 25
+        MAX_DEPTH = 1 #+ step // 25
 
         best_move = BestMove()
 
@@ -113,7 +114,7 @@ class MyAgent(Agent):
 
         # play normally  using the policy net as heuristic
         if not _train:
-            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move,heuristic=self.policy_net))
+            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -INF,beta = INF,best_move=best_move,heuristic=self.policy_net))
             print(best_move.move)
             return best_move.move
 
@@ -127,40 +128,32 @@ class MyAgent(Agent):
 
         # using policy net
         if random.random() > eps_threshold: 
-            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move,heuristic = self.policy_net)) 
-        
+            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -INF,beta = INF,best_move=best_move,heuristic = self.policy_net))
+            if best_move.move == None:
+                raise BaseException("No best move found")
         # random exploration
         else:
-            abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -999,beta = 999,best_move=best_move, heuristic=self.policy_net))
+            actions = list(board.get_actions())
+            act = actions[np.random.randint(len(actions))]
+            best_move.update(act)
 
-        try:
-            # calculate the reward based on the selected move
-            reward = calc_reward(board.clone(),best_move.move)
+        reward = calc_reward(board.clone(),best_move.move)
 
-        except:
-            raise BaseException("1")
         
-        print(reward,file = sys.stderr)
         reward = torch.tensor([reward], device=self.device)
             
         # Observe new state
         next_board = board.clone()
         next_board.play_action(best_move.move)
 
-        #TODO: handle end of game issues
-
         # Store the transition in memory
-        self.memory.push(board, best_move.move, next_board, reward)
+        self.memory.push(torch.tensor(board.m)[None,None].float(), torch.tensor(best_move.move), torch.tensor(next_board.m)[None,None].float(), reward)
         # Move to the next board
         board = next_board
 
         # Perform one step of the optimization (on the policy network)
-        optimize_model(self)
+        self.optimize_model()
 
-
-
-        #TODO: handle end of training
-        #TODO: handle number of episodes -- see how the end of the match is handled
 
         # Update the target network, copying all weights and biases in DQN
         # save the policy net
@@ -170,29 +163,93 @@ class MyAgent(Agent):
             torch.save(self.policy_net.state_dict(),f'models/mod_{self.date}.pt')
             torch.save(self.policy_net.state_dict(),f'models/currDQN.pt')
 
-
+        #TODO: print(self.policy_net(torch.tensor(board.m).float()[None,None]))
         return best_move.move
 
 
+    def optimize_model(self):
+
+        if len(self.memory) < self.BATCH_SIZE:
+            return
+        
+        transitions = self.memory.sample(self.BATCH_SIZE)
+        # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
+        # detailed explanation). This converts batch-array of Transitions
+        # to Transition of batch-arrays.
+        batch = self.Transition(*zip(*transitions))
+
+
+        #TODO: adapt the mask to our environment
+        # Compute a mask of non-final states and concatenate the batch elements
+        # (a final state would've been the one after which simulation ended)
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                                batch.next_state)), device=self.device, dtype=torch.bool)
+        non_final_next_states = torch.cat([s for s in batch.next_state
+                                        if s is not None])
+        state_batch = torch.cat(batch.state)
+        action_batch = torch.cat(batch.action)
+        reward_batch = torch.cat(batch.reward)
+
+
+        # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+        # columns of actions taken. These are the actions which would've been taken
+        # for each batch state according to policy_net
+        state_action_values = self.policy_net(state_batch)
+
+        # Compute V(s_{t+1}) for all next states.
+        # Expected values of actions for non_final_next_states are computed based
+        # on the "older" target_net; selecting their best reward with max(1)[0].
+        # This is merged based on the mask, such that we'll have either the expected
+        # state value or 0 in case the state was final.
+        next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
+        next_state_values[non_final_mask] = self.target_net(
+            non_final_next_states).max(1)[0].detach()
+        # Compute the expected Q values
+        expected_state_action_values = (next_state_values * self.GAMMA) + reward_batch
+
+        # Compute Huber loss
+        criterion = nn.SmoothL1Loss()
+        loss = criterion(state_action_values,
+                        expected_state_action_values.unsqueeze(1))
+
+        print(loss)
+        # Optimize the model
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+
+
 def calc_reward(state: Board, action):
-    return state.play_action(action).get_score()
+    new_state = state.clone().play_action(action)
+    
+    if new_state.is_finished():
+        return np.sign(new_state.get_score())
+
+    score = 0
+    for i in range(new_state.rows):
+        for j in range(new_state.columns):
+            if new_state.m[i][j] < 0:
+                score -= 1
+            elif new_state.m[i][j] > 0:
+                score += 1
+
+    return score*0.1
+
+
 
 # Alpha Beta pruning algorithm, best_move is modified in place
 def alphabeta(state: Board,depth: int,max_depth: int,player:int, alpha, beta, best_move: BestMove, action = None, heuristic: DQN = None):
     
 
     if depth == max_depth or state.is_finished():
-        if not heuristic:
-            return state.get_score() * 5
-        else:
-            temp = torch.tensor(state.m).float()
-            temp = temp[None,None]
-            try:
-                return heuristic(temp)
-            except:
-                raise ValueError
+        temp = torch.tensor(state.m).float()
+        temp = temp[None,None]
+        return heuristic(temp)
+
+
     actions = state.get_actions()
-    val = - player * 999
+    val = - player * INF
     while 1:
         
         try:
