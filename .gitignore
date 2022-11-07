@@ -1,4 +1,3 @@
 __pycache__
-logs
-models/*
-!models/curr*
+logs/games/*
+logs/players/*
