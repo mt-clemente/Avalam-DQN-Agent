@@ -40,6 +40,21 @@ class BestMove():
         self.move = act
 
 
+class MoveBuffer():
+    def __init__(self) -> None:
+        self.state = None
+        self.reward = None
+
+    def update(self, state: Board, reward):
+        self.state = state
+        self.reward = reward
+    
+    def reset(self):
+        self.state = None
+        self.reward = None
+
+
+
 class MyAgent(Agent):
 
     """My Avalam agent."""
@@ -48,23 +63,30 @@ class MyAgent(Agent):
 
         self.date = datetime.now()
         self.Transition = namedtuple('Transition',
-                                     ('state', 'action', 'next_state', 'reward'))
+                                     ('state', 'next_state', 'reward'))
 
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_episode = 0
-        self.BATCH_SIZE = 32
+        self.BATCH_SIZE = 128
         self.GAMMA = 0.99
         self.EPS_START = 0.9
         self.EPS_END = 0.05
         self.EPS_DECAY = 2000
-        self.TARGET_UPDATE = 15
+        self.TARGET_UPDATE = 20
         self.steps_done = 0
         self.eog_flag = 0
 
         board_height = 9
         board_width = 9
+
+        # as the opponent is not learning, the oppnent's moves must be
+        # considered an environment reaction. Which means that to store a
+        # transition we have to save the next state as the board resulting
+        # from the opponent's move, hence the need for a buffer
+
+        self.buffer = MoveBuffer()
 
         # try to load the model obtained from previous training
         try:
@@ -99,8 +121,10 @@ class MyAgent(Agent):
             eg; (1, 4, 1 , 3) to move tower on cell (1,4) to cell (1,3)
         """
 
+        # detect end of episode
         if step < self.eog_flag:
             self.num_episode += 1
+            self.buffer.reset()
 
         self.eog_flag = step
 
@@ -112,13 +136,23 @@ class MyAgent(Agent):
 
         # play normally  using the policy net as heuristic
         if not _train:
-            abs(alphabeta(board, 0, max_depth=MAX_DEPTH, player=player, alpha=-
-                INF, beta=INF, best_move=best_move, heuristic=self.policy_net))
+            abs(alphabeta(
+                    board,
+                    0,
+                    max_depth=MAX_DEPTH,
+                    player=player,
+                    alpha=-INF,
+                    beta=INF,
+                    best_move=best_move,
+                    heuristic=self.policy_ne
+                    ))
             return best_move.move
+
+
 
         # ----------- TRAIN THE MODEL -----------
 
-        # epsilon policy
+        # greedy epsilon policy
         eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
             np.exp(-1. * self.steps_done / self.EPS_DECAY)
         self.steps_done += 1
@@ -137,35 +171,21 @@ class MyAgent(Agent):
 
         reward = calc_reward(board.clone(), best_move.move)
 
-        reward = torch.tensor([reward], device=self.device)
-
         # Observe new state
         next_board = board.clone()
         next_board.play_action(best_move.move)
 
-        # FIXME:
-        # Store the transition in memory
-        # We dont need to store board and action just the result of the action
-        # next_state is our prediction for the board after the opponent makes his move
+        if self.buffer.state != None:
 
-        actions = list(board.get_actions())
-        with torch.no_grad():
-            opponent_action = actions[np.argmin([self.target_net(torch.tensor(
-                board.clone().play_action(act).m)[None, None].float()) for act in actions])]
-            post_opp_board = board.clone()
-            post_opp_board.play_action(opponent_action)
+            self.memory.push(
+                self.buffer.state,
+                board,
+                self.buffer.reward)
 
-
-        self.memory.push(
-            torch.tensor(next_board.m)[None, None].float(),
-            torch.tensor(best_move.move),
-            post_opp_board,
-            reward)
-
-
-        # TODO: remove?
-        # Move to the next board
-        board = next_board
+        self.buffer.update(
+            state=torch.FloatTensor(next_board.m)[None, None],
+            reward=torch.tensor([reward], device=self.device)
+        )
 
         # Perform one step of the optimization (on the policy network)
         self.optimize_model()
@@ -183,22 +203,14 @@ class MyAgent(Agent):
         return best_move.move
 
 
-
-
-
-
     def optimize_model(self):
 
         if len(self.memory) < self.BATCH_SIZE:
             return
 
         transitions = self.memory.sample(self.BATCH_SIZE)
-        # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
-        # detailed explanation). This converts batch-array of Transitions
-        # to Transition of batch-arrays.
-        batch = self.Transition(*zip(*transitions))
 
-        # TODO: END OF GAME MOVES
+        batch = self.Transition(*zip(*transitions))
 
         # Compute a mask of non-final states and concatenate the batch elements
         # (a final state would've been the one after which simulation ended)
@@ -209,11 +221,7 @@ class MyAgent(Agent):
                                            if s is not None]) """
 
         state_batch = torch.cat(batch.state)
-        action_batch = torch.cat(batch.action)
         reward_batch = torch.cat(batch.reward)
-        # we need to calculate the max expected Q value following our actions
-        # to do that we will use our target network to predict the opponent's move
-        # then calculate the expected max Q value
 
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
@@ -236,9 +244,9 @@ class MyAgent(Agent):
                     continue
                 try:
                     next_state_values[i] = torch.max(torch.tensor([self.target_net(
-                            torch.tensor(
-                                state.clone().play_action(act).m)[None,None].float())
-                                    for act in actions]))
+                        torch.tensor(
+                            state.clone().play_action(act).m)[None, None].float())
+                        for act in actions]))
                 except:
                     raise BaseException(actions)
 
@@ -250,7 +258,7 @@ class MyAgent(Agent):
         loss = criterion(state_action_values,
                          expected_state_action_values.unsqueeze(1))
 
-        print(loss,sys.stderr)
+        print(loss, sys.stderr)
 
         # Optimize the model
 
