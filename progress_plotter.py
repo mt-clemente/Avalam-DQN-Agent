@@ -25,19 +25,20 @@ for dir in dirs:
         try:
             Y.append(int(parse.parse("{} .{}", score)[0]))
             if Y[-1] > 0:
-                w+=1
+                w=1
             else:
-                w-=1    
+                w=0
             W.append(w)
 
         # invalid moves are treated as -100
         except ValueError:
             Y.append(-100)
+            W.append(w)
         c += 1
 
     X = [i for i in range(c)]
-    plt.plot(X,Y)
-    plt.plot(X,W)
+    #plt.plot(X,Y)
+    plt.plot(X,[w  for w in W])
     plt.xlabel('Epsiode')
     plt.ylabel('Score')
     print(dir)

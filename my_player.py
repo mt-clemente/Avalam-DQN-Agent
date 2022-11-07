@@ -51,13 +51,13 @@ class MyAgent(Agent):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_episode = 0
-        self.BATCH_SIZE = 10
-        self.GAMMA = 0.99
+        self.BATCH_SIZE = 100
+        self.GAMMA = 0.8
         self.EPS_START = 0.9
         self.EPS_END = 0.05
         self.EPS_DECAY = 200
-        self.TARGET_UPDATE = 5
-        self.steps_done = 10000
+        self.TARGET_UPDATE = 15
+        self.steps_done = 0
         self.eog_flag = 0
 
 
@@ -76,8 +76,8 @@ class MyAgent(Agent):
         self.target_net.eval()
 
 
-        self.optimizer = optim.RMSprop(self.policy_net.parameters())
-        self.memory = ReplayMemory(10000,self.Transition)
+        self.optimizer = optim.RMSprop(self.policy_net.parameters(),lr=0.05)
+        self.memory = ReplayMemory(3000,self.Transition)
 
 
 
@@ -115,7 +115,6 @@ class MyAgent(Agent):
         # play normally  using the policy net as heuristic
         if not _train:
             abs(alphabeta(board,0,max_depth=MAX_DEPTH,player = player,alpha = -INF,beta = INF,best_move=best_move,heuristic=self.policy_net))
-            print(best_move.move)
             return best_move.move
 
 
@@ -125,6 +124,7 @@ class MyAgent(Agent):
         eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
         np.exp(-1. * self.steps_done / self.EPS_DECAY)
         self.steps_done += 1
+
 
         # using policy net
         if random.random() > eps_threshold: 
@@ -151,6 +151,7 @@ class MyAgent(Agent):
         # Move to the next board
         board = next_board
 
+        
         # Perform one step of the optimization (on the policy network)
         self.optimize_model()
 
@@ -158,6 +159,7 @@ class MyAgent(Agent):
         # Update the target network, copying all weights and biases in DQN
         # save the policy net
         if self.num_episode % self.TARGET_UPDATE == 0:
+
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
             torch.save(self.policy_net.state_dict(),f'models/mod_{self.date}.pt')
@@ -212,11 +214,13 @@ class MyAgent(Agent):
         loss = criterion(state_action_values,
                         expected_state_action_values.unsqueeze(1))
 
-        print(loss)
         # Optimize the model
+
+        a = list(self.policy_net.parameters())[0].clone()
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        
 
 
 
@@ -224,17 +228,19 @@ def calc_reward(state: Board, action):
     new_state = state.clone().play_action(action)
     
     if new_state.is_finished():
-        return np.sign(new_state.get_score())
+        if new_state.get_score() > 0:
+            return +1
+        else:
+            return -5
+    
+    # check if the oponent can win the game
+    for act in new_state.get_actions():
+        temp = new_state.clone()
+        temp.play_action(act)
+        if temp.is_finished() and temp.get_score() < 0:
+            return -5
 
-    score = 0
-    for i in range(new_state.rows):
-        for j in range(new_state.columns):
-            if new_state.m[i][j] < 0:
-                score -= 1
-            elif new_state.m[i][j] > 0:
-                score += 1
-
-    return score*0.1
+    return 0
 
 
 
