@@ -45,7 +45,7 @@ for dir in dirs:
     #plt.plot(X,Y)
     plt.plot(X,[w  for w in W])
     plt.xlabel('Epsiode')
-    plt.ylabel('Score')
+    plt.ylabel('Win delta')
     print(dir)
     print(f"accuracy : {wins/len(Y) * 100}% out of {len(Y)} games")
     plt.savefig(f'scores/scores_{str(dir).rpartition(os.sep)[2]}.png')
