@@ -14,8 +14,8 @@ batch_dir = f'logs/games/batch_{datetime.now()}'
 os.mkdir(batch_dir)
 
 #chose ports
-port1 = 8201
-port2 = 8202
+port1 = 8127
+port2 = 8128
 
 #initialize agents
 sp1 = subprocess.Popen(f"python3 my_player.py -b localhost --port {port1}",shell=True,stderr=open("logs/players/log1.txt","w"))
@@ -23,7 +23,7 @@ sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port2}",s
 time.sleep(2.5)
 
 #training parameters
-episodes = 300
+episodes = 8
 start = time.time()
 
 s=[]

@@ -65,6 +65,7 @@ class MyAgent(Agent):
         self.Transition = namedtuple('Transition',
                                      ('state', 'next_state', 'reward'))
 
+        print(f"CUDA available : {torch.cuda.is_available()}")
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
 
@@ -103,7 +104,7 @@ class MyAgent(Agent):
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
-        self.optimizer = optim.Adam(self.policy_net.parameters())
+        self.optimizer = optim.Adam(self.policy_net.parameters(),amsgrad=True)
         self.memory = ReplayMemory(10000, self.Transition)
 
     def play(self, percepts, player, step, time_left, _train=True):
@@ -150,7 +151,6 @@ class MyAgent(Agent):
             return best_move.move
 
 
-
         # ----------- TRAIN THE MODEL -----------
 
         # greedy epsilon policy
@@ -190,7 +190,6 @@ class MyAgent(Agent):
 
         # Perform one step of the optimization (on the policy network)
         self.optimize_model()
-
         # Update the target network, copying all weights and biases in DQN
         # save the policy net
         if self.num_episode % self.TARGET_UPDATE == 0:
@@ -208,6 +207,7 @@ class MyAgent(Agent):
 
         if len(self.memory) < self.BATCH_SIZE:
             return
+
 
         transitions = self.memory.sample(self.BATCH_SIZE)
 
@@ -236,31 +236,33 @@ class MyAgent(Agent):
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
 
+
         with torch.no_grad():
             for i in range(self.BATCH_SIZE):
                 # Compute the expected Q values
+                t0 = datetime.now()
                 state = batch.next_state[i]
                 actions = list(state.get_actions())
+                t1 = datetime.now()
                 if not actions:
                     continue
-                try:
-                    next_state_values[i] = torch.max(torch.tensor([self.target_net(
-                        torch.tensor(
-                            state.clone().play_action(act).m)[None, None].float())
-                        for act in actions]))
-                except:
-                    raise BaseException(actions)
+                next_state_values[i] = torch.max(torch.tensor([self.target_net(
+                    torch.tensor(
+                        state.clone().play_action(act).m)[None, None].float())
+                    for act in actions]))
+                t2 =datetime.now()
 
         expected_state_action_values = (
             next_state_values * self.GAMMA) + reward_batch
+
+
 
         # Compute Huber loss
         criterion = nn.HuberLoss()
         loss = criterion(state_action_values,
                          expected_state_action_values.unsqueeze(1))
 
-        print(loss, sys.stderr)
-
+        print(loss,sys.stderr)
         # Optimize the model
 
         self.optimizer.zero_grad()
@@ -269,10 +271,15 @@ class MyAgent(Agent):
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
+        print("|",t2-t1,"|",t1-t0,"|",sys.stderr)
+
 
 def calc_reward(state: Board, action):
     new_state = state.clone().play_action(action)
 
+    return new_state.get_score()
+
+    print(new_state.is_finished())
     if new_state.is_finished():
         if new_state.get_score() > 0:
             return +1
