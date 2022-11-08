@@ -70,12 +70,12 @@ class MyAgent(Agent):
             "cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_episode = 0
-        self.BATCH_SIZE = 128
+        self.BATCH_SIZE = 256
         self.GAMMA = 0.99
         self.EPS_START = 0.9
         self.EPS_END = 0.05
-        self.EPS_DECAY = 2000
-        self.TARGET_UPDATE = 20
+        self.EPS_DECAY = 8000
+        self.TARGET_UPDATE = 200
         self.steps_done = 0
         self.eog_flag = 0
 
@@ -235,23 +235,23 @@ class MyAgent(Agent):
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
+        
+        
+        t1 = datetime.now()
 
 
         with torch.no_grad():
             for i in range(self.BATCH_SIZE):
                 # Compute the expected Q values
-                t0 = datetime.now()
                 state = batch.next_state[i]
                 actions = list(state.get_actions())
-                t1 = datetime.now()
                 if not actions:
                     continue
-                next_state_values[i] = torch.max(torch.tensor([self.target_net(
-                    torch.tensor(
-                        state.clone().play_action(act).m)[None, None].float())
-                    for act in actions]))
-                t2 =datetime.now()
+                next_state_values[i] = torch.max(self.target_net(
+                    torch.tensor([state.clone().play_action(act).m for act in actions]).unsqueeze(1).float()
+                    ))
 
+        t2 =datetime.now()
         expected_state_action_values = (
             next_state_values * self.GAMMA) + reward_batch
 
@@ -271,7 +271,7 @@ class MyAgent(Agent):
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
-        print("|",t2-t1,"|",t1-t0,"|",sys.stderr)
+        print("|",t2-t1,"|",sys.stderr)
 
 
 def calc_reward(state: Board, action):
@@ -294,6 +294,10 @@ def calc_reward(state: Board, action):
             return -5
 
     return 0
+
+def get_all_possible_outcomes(state : Board) -> np.ndarray:
+    actions = list(state.get_actions())
+    state.play_action
 
 
 # Alpha Beta pruning algorithm, best_move is modified in place

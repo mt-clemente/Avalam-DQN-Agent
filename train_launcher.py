@@ -23,7 +23,7 @@ sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port2}",s
 time.sleep(2.5)
 
 #training parameters
-episodes = 8
+episodes = 100
 start = time.time()
 
 s=[]
