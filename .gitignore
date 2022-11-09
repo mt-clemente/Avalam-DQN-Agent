@@ -8,3 +8,5 @@ figs/scores/*
 !figs/scores/.gitkeep
 figs/loss/*
 !figs/loss/.gitkeep
+
+rainbow-is*
