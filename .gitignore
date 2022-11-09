@@ -1,4 +1,10 @@
 __pycache__
 logs/games/*
+!logs/games/.gitkeep
+
 logs/players/*
-scores/*
+!logs/players/.gitkeep
+figs/scores/*
+!figs/scores/.gitkeep
+figs/loss/*
+!figs/loss/.gitkeep

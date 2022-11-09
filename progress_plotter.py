@@ -5,9 +5,47 @@ import parse
 from pathlib import Path
 
 
-dir_path = './logs/games'
 
-# Iterate directory
+dir_path = './logs/results'
+files = filter(os.path.isfile, sorted(Path(dir_path).iterdir(), key=os.path.getmtime))
+for file in files:
+    
+    Y = []
+    W = []
+    w = 0
+    wins = 0
+    c = 0
+    if os.path.exists(f'figs/loss/loss_{str(dir).rpartition(os.sep)[2]}.png'):
+        print(f"{file} not updated")
+        #continue
+
+    f = open(f"{file}")
+    lines = f.readlines()
+    if not lines:
+        continue
+    for line in lines[2:]:
+        try:
+            Y.append(float(parse.parse("{}ensor({},{}", line.strip())[1]))
+        except:
+            continue
+
+    X = [i for i in range(len(Y))]
+    #plt.plot(X,Y)
+    plt.plot(X,Y)
+    plt.xlabel('Step')
+    plt.ylabel('Huber loss')
+    print(dir)
+    head_i = min(len(Y) // 10, 100)
+    tail_i = len(Y) - min(len(Y) // 10, 100)
+    print(f"head avg loss : {sum(Y[:head_i])/len(Y[:head_i])} | tail avg loss {sum(Y[tail_i:])/len(Y[tail_i:])}")
+    plt.savefig(f'figs/loss/loss_{str(file).rpartition(os.sep)[2]}.png')
+    plt.clf()
+
+
+
+
+# Plot win difference
+dir_path = './logs/games'
 dirs = filter(os.path.isdir, sorted(Path(dir_path).iterdir(), key=os.path.getmtime))
 for dir in dirs:
     
@@ -17,7 +55,7 @@ for dir in dirs:
     wins = 0
     c = 0
     paths = filter(os.path.isfile, sorted(Path(dir).iterdir(), key=os.path.getmtime))
-    if os.path.exists(f'scores/scores_{str(dir).rpartition(os.sep)[2]}.png'):
+    if os.path.exists(f'figs/scores/scores_{str(dir).rpartition(os.sep)[2]}.png'):
         print(f"{dir} not updated")
         #continue
     for file in paths:
@@ -47,6 +85,6 @@ for dir in dirs:
     plt.xlabel('Epsiode')
     plt.ylabel('Win delta')
     print(dir)
-    print(f"accuracy : {wins/len(Y) * 100}% out of {len(Y)} games")
-    plt.savefig(f'scores/scores_{str(dir).rpartition(os.sep)[2]}.png')
+    print(f"winrate : {wins/len(Y) * 100}% out of {len(Y)} games")
+    plt.savefig(f'figs/scores/scores_{str(dir).rpartition(os.sep)[2]}.png')
     plt.clf()

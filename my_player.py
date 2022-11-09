@@ -70,15 +70,15 @@ class MyAgent(Agent):
             "cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_episode = 0
-        self.BATCH_SIZE = 256
-        self.GAMMA = 0.99
+        self.BATCH_SIZE = 64
+        self.GAMMA = 0.95
         self.EPS_START = 0.9
         self.EPS_END = 0.05
-        self.EPS_DECAY = 8000
+        self.EPS_DECAY = 500
         self.TARGET_UPDATE = 200
         self.steps_done = 0
         self.eog_flag = 0
-
+        self.BACTH_ROUNDS = 5
         board_height = 9
         board_width = 9
 
@@ -104,10 +104,10 @@ class MyAgent(Agent):
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
-        self.optimizer = optim.Adam(self.policy_net.parameters(),amsgrad=True)
+        self.optimizer = optim.Adam(self.policy_net.parameters(),amsgrad=True,lr = 1 * 10**-4)
         self.memory = ReplayMemory(10000, self.Transition)
 
-    def play(self, percepts, player, step, time_left, _train=True):
+    def play(self, percepts, player, step, time_left, _train=False):
         """
         This function is used to play a move according
         to the percepts, player and time left provided as input.
@@ -123,10 +123,6 @@ class MyAgent(Agent):
             eg; (1, 4, 1 , 3) to move tower on cell (1,4) to cell (1,3)
         """
 
-        # detect end of episode
-        if step < self.eog_flag:
-            self.num_episode += 1
-            self.buffer.reset()
 
         self.eog_flag = step
 
@@ -146,7 +142,7 @@ class MyAgent(Agent):
                     alpha=-INF,
                     beta=INF,
                     best_move=best_move,
-                    heuristic=self.policy_ne
+                    heuristic=self.policy_net
                     ))
             return best_move.move
 
@@ -189,7 +185,14 @@ class MyAgent(Agent):
         )
 
         # Perform one step of the optimization (on the policy network)
-        self.optimize_model()
+
+        self.optimize_model(self.BACTH_ROUNDS)
+        
+        # detect end of episode
+        if step < self.eog_flag:
+            self.num_episode += 1
+            self.buffer.reset()
+        
         # Update the target network, copying all weights and biases in DQN
         # save the policy net
         if self.num_episode % self.TARGET_UPDATE == 0:
@@ -203,81 +206,80 @@ class MyAgent(Agent):
         return best_move.move
 
 
-    def optimize_model(self):
+    def optimize_model(self,batch_number):
 
-        if len(self.memory) < self.BATCH_SIZE:
-            return
-
-
-        transitions = self.memory.sample(self.BATCH_SIZE)
-
-        batch = self.Transition(*zip(*transitions))
-
-        # Compute a mask of non-final states and concatenate the batch elements
-        # (a final state would've been the one after which simulation ended)
-        """ non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                                batch.next_state)), device=self.device, dtype=torch.bool)
-
-        non_final_next_states = torch.cat([s for s in batch.next_state
-                                           if s is not None]) """
-
-        state_batch = torch.cat(batch.state)
-        reward_batch = torch.cat(batch.reward)
-
-        # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
-        # columns of actions taken. These are the actions which would've been taken
-        # for each batch state according to policy_net
-        state_action_values = self.policy_net(state_batch)
-
-        # Compute V(s_{t+1}) for all next states.
-        # Expected values of actions for non_final_next_states are computed based
-        # on the "older" target_net; selecting their best reward with max(1)[0].
-        # This is merged based on the mask, such that we'll have either the expected
-        # state value or 0 in case the state was final.
-        next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
-        
-        
-        t1 = datetime.now()
+        for i in range(batch_number):
+            if len(self.memory) < self.BATCH_SIZE:
+                return
 
 
-        with torch.no_grad():
-            for i in range(self.BATCH_SIZE):
-                # Compute the expected Q values
-                state = batch.next_state[i]
-                actions = list(state.get_actions())
-                if not actions:
-                    continue
-                next_state_values[i] = torch.max(self.target_net(
-                    torch.tensor([state.clone().play_action(act).m for act in actions]).unsqueeze(1).float()
-                    ))
+            transitions = self.memory.sample(self.BATCH_SIZE)
 
-        t2 =datetime.now()
-        expected_state_action_values = (
-            next_state_values * self.GAMMA) + reward_batch
+            batch = self.Transition(*zip(*transitions))
+
+            # Compute a mask of non-final states and concatenate the batch elements
+            # (a final state would've been the one after which simulation ended)
+            """ non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                                    batch.next_state)), device=self.device, dtype=torch.bool)
+
+            non_final_next_states = torch.cat([s for s in batch.next_state
+                                            if s is not None]) """
+
+            state_batch = torch.cat(batch.state)
+            reward_batch = torch.cat(batch.reward)
+
+            # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+            # columns of actions taken. These are the actions which would've been taken
+            # for each batch state according to policy_net
+            state_action_values = self.policy_net(state_batch)
+
+            # Compute V(s_{t+1}) for all next states.
+            # Expected values of actions for non_final_next_states are computed based
+            # on the "older" target_net; selecting their best reward with max(1)[0].
+            # This is merged based on the mask, such that we'll have either the expected
+            # state value or 0 in case the state was final.
+            next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
+            
+            
+            t1 = datetime.now()
+
+
+            with torch.no_grad():
+                for i in range(self.BATCH_SIZE):
+                    # Compute the expected Q values
+                    state = batch.next_state[i]
+                    actions = list(state.get_actions())
+                    if not actions:
+                        continue
+                    next_state_values[i] = torch.max(self.target_net(
+                        torch.tensor([state.clone().play_action(act).m for act in actions]).unsqueeze(1).float()
+                        ))
+
+            t2 =datetime.now()
+            expected_state_action_values = (
+                next_state_values * self.GAMMA) + reward_batch
 
 
 
-        # Compute Huber loss
-        criterion = nn.HuberLoss()
-        loss = criterion(state_action_values,
-                         expected_state_action_values.unsqueeze(1))
+            # Compute Huber loss
+            criterion = nn.HuberLoss()
+            loss = criterion(state_action_values,
+                            expected_state_action_values.unsqueeze(1))
 
-        print(loss,sys.stderr)
-        # Optimize the model
+            print(loss,sys.stdout)
+            # Optimize the model
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        for param in self.policy_net.parameters():
-            param.grad.data.clamp_(-1, 1)
-        self.optimizer.step()
-
-        print("|",t2-t1,"|",sys.stderr)
+            self.optimizer.zero_grad()
+            loss.backward()
+            for param in self.policy_net.parameters():
+                param.grad.data.clamp_(-1, 1)
+            self.optimizer.step()
 
 
 def calc_reward(state: Board, action):
     new_state = state.clone().play_action(action)
 
-    return new_state.get_score()
+    return new_state.get_score() - state.get_score()
 
     print(new_state.is_finished())
     if new_state.is_finished():
