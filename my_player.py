@@ -24,36 +24,12 @@ import random
 import sys
 import torch.nn as nn
 import numpy as np
-from DQN_heuristics import DQN, ReplayMemory
+from DQN_heuristics import DQN, PrioritizedReplayMemory, ReplayMemory, BestMove, MoveBuffer
 from avalam import *
 import torch
 import torch.optim as optim
 
 INF = 2**32-1
-
-
-class BestMove():
-    def __init__(self) -> None:
-        self.move = None
-
-    def update(self, act) -> None:
-        self.move = act
-
-
-class MoveBuffer():
-    def __init__(self) -> None:
-        self.state = None
-        self.reward = None
-
-    def update(self, state: Board, reward):
-        self.state = state
-        self.reward = reward
-    
-    def reset(self):
-        self.state = None
-        self.reward = None
-
-
 
 class MyAgent(Agent):
 
@@ -61,9 +37,15 @@ class MyAgent(Agent):
 
     def __init__(self) -> None:
 
+        # ---------- AlphaBeta init ----------
+
+        self.MAX_DEPTH = 1
+
+        # ---------- DQN init ----------
+
         self.date = datetime.now()
         self.Transition = namedtuple('Transition',
-                                     ('state', 'next_state', 'reward'))
+                                     ('state', 'next_state', 'reward','weights','indices'))
 
         print(f"CUDA available : {torch.cuda.is_available()}")
         self.device = torch.device(
@@ -81,6 +63,11 @@ class MyAgent(Agent):
         self.BACTH_ROUNDS = 5
         board_height = 9
         board_width = 9
+        self.lr = 1 * 10 ** -4
+
+        self.alpha = 0.5
+        self.beta = 0.4
+        self.prio_epsilon = 1e-6
 
         # as the opponent is not learning, the oppnent's moves must be
         # considered an environment reaction. Which means that to store a
@@ -103,32 +90,23 @@ class MyAgent(Agent):
                               1, self.device).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
+        
 
-        self.optimizer = optim.Adam(self.policy_net.parameters(),amsgrad=True,lr = 1 * 10**-4)
-        self.memory = ReplayMemory(10000, self.Transition)
+        self.optimizer = optim.Adam(self.policy_net.parameters(),amsgrad=True,lr =self.lr)
+        self.memory = PrioritizedReplayMemory(
+            size = 10000,
+            Transition = self.Transition,
+            alpha = self.alpha,
+            batch_size=self.BATCH_SIZE
+            )
 
-    def play(self, percepts, player, step, time_left, _train=False):
-        """
-        This function is used to play a move according
-        to the percepts, player and time left provided as input.
-        It must return an action representing the move the player
-        will perform.
-        :param percepts: dictionary representing the current board
-            in a form that can be fed to `dict_to_board()` in avalam.py.
-        :param player: the player to control in this step (-1 or 1)
-        :param step: the current step number, starting from 1
-        :param time_left: a float giving the number of seconds left from the time
-            credit. If the game is not time-limited, time_left is None.
-        :return: an action
-            eg; (1, 4, 1 , 3) to move tower on cell (1,4) to cell (1,3)
-        """
+
+    def play(self, percepts, player, step, time_left, _train=True):
 
 
         self.eog_flag = step
 
         board: Board = dict_to_board(percepts)
-
-        MAX_DEPTH = 1  # + step // 25
 
         best_move = BestMove()
 
@@ -137,7 +115,7 @@ class MyAgent(Agent):
             abs(alphabeta(
                     board,
                     0,
-                    max_depth=MAX_DEPTH,
+                    max_depth=self.MAX_DEPTH,
                     player=player,
                     alpha=-INF,
                     beta=INF,
@@ -149,22 +127,7 @@ class MyAgent(Agent):
 
         # ----------- TRAIN THE MODEL -----------
 
-        # greedy epsilon policy
-        eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
-            np.exp(-1. * self.steps_done / self.EPS_DECAY)
-        self.steps_done += 1
-
-        # using policy net
-        if random.random() > eps_threshold:
-            abs(alphabeta(board, 0, max_depth=MAX_DEPTH, player=player, alpha=-
-                INF, beta=INF, best_move=best_move, heuristic=self.policy_net))
-            if best_move.move == None:
-                raise BaseException("No best move found")
-        # random exploration
-        else:
-            actions = list(board.get_actions())
-            act = actions[np.random.randint(len(actions))]
-            best_move.update(act)
+        self.update_best_move(board,player,best_move)
 
         reward = calc_reward(board.clone(), best_move.move)
 
@@ -172,20 +135,21 @@ class MyAgent(Agent):
         next_board = board.clone()
         next_board.play_action(best_move.move)
 
-        if self.buffer.state != None:
+
+        if self.buffer.statem != None:
 
             self.memory.push(
-                self.buffer.state,
+                self.buffer.statem,
                 board,
                 self.buffer.reward)
 
         self.buffer.update(
-            state=torch.FloatTensor(next_board.m)[None, None],
+            statem=torch.FloatTensor(next_board.m)[None, None],
             reward=torch.tensor([reward], device=self.device)
         )
 
-        # Perform one step of the optimization (on the policy network)
 
+        # Perform one step of the optimization (on the policy network)
         self.optimize_model(self.BACTH_ROUNDS)
         
         # detect end of episode
@@ -193,8 +157,7 @@ class MyAgent(Agent):
             self.num_episode += 1
             self.buffer.reset()
         
-        # Update the target network, copying all weights and biases in DQN
-        # save the policy net
+        # Update the target network and checkpoint the policy net
         if self.num_episode % self.TARGET_UPDATE == 0:
 
             self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -213,10 +176,9 @@ class MyAgent(Agent):
                 return
 
 
-            transitions = self.memory.sample(self.BATCH_SIZE)
+            transitions = self.memory.sample(self.beta)
 
-            batch = self.Transition(*zip(*transitions))
-
+            batch = transitions#self.Transition(*zip(*transitions))
             # Compute a mask of non-final states and concatenate the batch elements
             # (a final state would've been the one after which simulation ended)
             """ non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
@@ -225,8 +187,10 @@ class MyAgent(Agent):
             non_final_next_states = torch.cat([s for s in batch.next_state
                                             if s is not None]) """
 
-            state_batch = torch.cat(batch.state)
-            reward_batch = torch.cat(batch.reward)
+
+            state_batch =  torch.from_numpy(batch.state ).float().unsqueeze(1).to(self.device)
+            reward_batch =  torch.from_numpy(batch.reward).to(self.device)
+            weights = torch.FloatTensor(batch.weights).to(self.device)
 
             # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
             # columns of actions taken. These are the actions which would've been taken
@@ -239,9 +203,6 @@ class MyAgent(Agent):
             # This is merged based on the mask, such that we'll have either the expected
             # state value or 0 in case the state was final.
             next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
-            
-            
-            t1 = datetime.now()
 
 
             with torch.no_grad():
@@ -255,16 +216,17 @@ class MyAgent(Agent):
                         torch.tensor([state.clone().play_action(act).m for act in actions]).unsqueeze(1).float()
                         ))
 
-            t2 =datetime.now()
             expected_state_action_values = (
                 next_state_values * self.GAMMA) + reward_batch
 
 
 
             # Compute Huber loss
-            criterion = nn.HuberLoss()
-            loss = criterion(state_action_values,
+            eltwise_criterion = nn.HuberLoss(reduction="none")
+            eltwise_loss = eltwise_criterion(state_action_values,
                             expected_state_action_values.unsqueeze(1))
+            
+            loss = torch.mean(eltwise_loss * weights)
 
             print(loss,sys.stdout)
             # Optimize the model
@@ -274,6 +236,33 @@ class MyAgent(Agent):
             for param in self.policy_net.parameters():
                 param.grad.data.clamp_(-1, 1)
             self.optimizer.step()
+
+
+            #update priorities for PER
+            prio_loss = eltwise_loss.detach().cpu().numpy()
+            new_priorities = prio_loss + self.prio_epsilon
+            self.memory.update_priorities(batch.indices, new_priorities)
+
+
+    def update_best_move(self, board, player, best_move) -> None:
+        
+        # greedy epsilon policy
+        eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
+            np.exp(-1. * self.steps_done / self.EPS_DECAY)
+
+        self.steps_done += 1
+
+        # using policy net
+        if random.random() > eps_threshold:
+            abs(alphabeta(board, 0, max_depth=self.MAX_DEPTH, player=player, alpha=-
+                INF, beta=INF, best_move=best_move, heuristic=self.policy_net))
+            if best_move.move == None:
+                raise BaseException("No best move found")
+        # random exploration
+        else:
+            actions = list(board.get_actions())
+            act = actions[np.random.randint(len(actions))]
+            best_move.update(act)
 
 
 def calc_reward(state: Board, action):
