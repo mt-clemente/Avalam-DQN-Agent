@@ -120,4 +120,4 @@ for gen in range(NB_GEN):
 
 os.mkdir(f"saved_models/models_{date}/")
 os.system(f"cp -a session_models/ saved_models/models_{date}/")
-os.system(f"rm session_models/*")
+os.system(f"rm session_models/* !.gitkeep")
