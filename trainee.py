@@ -68,7 +68,7 @@ class MyAgent(Agent):
         board_width = 9
         self.lr = 1 * 10 ** -4
 
-        self.alpha = 0.5
+        self.alpha = 1.8
         self.beta = 0.4
         self.prio_epsilon = 1e-6
 
@@ -105,7 +105,7 @@ class MyAgent(Agent):
 
     def play(self, percepts, player, step, time_left):
 
-        
+        t0 = datetime.now()
 
         self.eog_flag = step
         if player == 1:
@@ -114,7 +114,6 @@ class MyAgent(Agent):
             board: Board = Board(percepts['m'],invert= True)
         best_move = BestMove()
 
-        print(board,sys.stderr)
 
         # play normally  using the policy net as heuristic
         if not self._train:
@@ -170,6 +169,7 @@ class MyAgent(Agent):
             self.target_net.load_state_dict(self.policy_net.state_dict())
             torch.save(self.policy_net.state_dict(), f'models/currDQN.pt')
 
+
         return best_move.move
 
 
@@ -209,6 +209,8 @@ class MyAgent(Agent):
             next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
 
 
+            t = datetime.now()
+
             with torch.no_grad():
                 for i in range(self.BATCH_SIZE):
                     # Compute the expected Q values
@@ -219,6 +221,8 @@ class MyAgent(Agent):
                     next_state_values[i] = torch.max(self.target_net(
                         torch.tensor([state.clone().play_action(act).m for act in actions]).unsqueeze(1).float()
                         ))
+
+            print(datetime.now() - t)
 
             expected_state_action_values = (
                 next_state_values * self.GAMMA) + reward_batch
@@ -233,7 +237,6 @@ class MyAgent(Agent):
             loss = torch.mean(eltwise_loss * weights)
 
             
-            print(state_action_values,sys.stdout)
             # Optimize the model
 
             self.optimizer.zero_grad()

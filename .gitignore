@@ -6,6 +6,7 @@ figs/loss/*
 ssh/vm1/*
 ssh/vm2/*
 rainbow-is*
+stdout/
 
 
 !*.gitkeep
