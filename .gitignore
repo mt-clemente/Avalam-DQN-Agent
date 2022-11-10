@@ -1,12 +1,11 @@
 __pycache__
 logs/games/*
-!logs/games/.gitkeep
-
 logs/players/*
-!logs/players/.gitkeep
 figs/scores/*
-!figs/scores/.gitkeep
 figs/loss/*
-!figs/loss/.gitkeep
-
+ssh/vm1/*
+ssh/vm2/*
 rainbow-is*
+
+
+!*.gitkeep
