@@ -101,7 +101,7 @@ class MyAgent(Agent):
             )
 
 
-    def play(self, percepts, player, step, time_left, _train=True):
+    def play(self, percepts, player, step, time_left, _train=False):
 
 
         self.eog_flag = step
@@ -163,7 +163,7 @@ class MyAgent(Agent):
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
             torch.save(self.policy_net.state_dict(),
-                       f'models/mod_{self.date}.pt')
+                       f'models/checkpoints/mod_{self.date}.pt')
             torch.save(self.policy_net.state_dict(), f'models/currDQN.pt')
 
         return best_move.move
@@ -228,7 +228,8 @@ class MyAgent(Agent):
             
             loss = torch.mean(eltwise_loss * weights)
 
-            print(loss,sys.stdout)
+            
+            print(state_action_values,sys.stdout)
             # Optimize the model
 
             self.optimizer.zero_grad()

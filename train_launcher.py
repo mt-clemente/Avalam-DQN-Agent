@@ -7,24 +7,23 @@ import psutil
 
 #TODO: Try to multithread (go back to Popen + wait for all process to finish at then end. Maybe not doable for model optimization)
 
-MULTITHREAD = False
 
 
 batch_dir = f'logs/games/batch_{datetime.now()}' 
-file_losses = f'logs/results/loss_{datetime.now()}' 
+sdout_file = f'logs/stdout/stdout_{datetime.now()}' 
 os.mkdir(batch_dir)
 
 #chose ports
-port1 = 8698
-port2 = 8699
+port1 = 8328
+port2 = 8329
 
 #initialize agents
-sp1 = subprocess.Popen(f"python3 my_player.py -b localhost --port {port1}",shell=True,stdout=open(f"{file_losses}.txt","w"),stderr=open("logs/players/log1.txt","w"))
+sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True,stdout=open(f"{sdout_file}.txt","w"),stderr=open("logs/players/log1.txt","w"))
 sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=open("logs/players/log2.txt","w"))
 time.sleep(2.5)
 
 #training parameters
-episodes = 7
+episodes = 100
 start = time.time()
 
 s=[]
@@ -32,28 +31,9 @@ files=[]
 for i in range(episodes):
     f = open(f"{batch_dir}/log_{datetime.now()}.txt","w")
     t = datetime.now()
-    if MULTITHREAD:
-        p = subprocess.Popen(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=f)
-        s.append(p)
-        files.append(f)
-    else:
-        p = subprocess.call(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=f)
-        print(f"episode {i} done in {datetime.now() - t}")
+    p = subprocess.call(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=f)
+    print(f"episode {i} done in {datetime.now() - t}")
 
-    
-if MULTITHREAD:    
-    finished = 0
-
-    while s:
-        i = 0
-        while i < len(s):
-            if s[i].poll() != None:
-                s.pop(i)
-                files[i].close()
-                finished +=1
-                print(f"\r{finished/episodes*100}%")
-            i += 1
-        time.sleep(.5)
 
 end = time.time()
 
