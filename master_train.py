@@ -118,6 +118,7 @@ for gen in range(NB_GEN):
     train(gen,nb_ep=EP_PER_GEN,batch_dir = batch_dir,stdout_dir = stdout_dir)
     print(f"--------------- GENERATION {gen} DONE --------------- \n\n")
 
+os.mkdir("session_models")
 os.mkdir(f"saved_models/models_{date}/")
 os.system(f"cp -a session_models/ saved_models/models_{date}/")
 os.system(f"rm session_models/* !.gitkeep")
