@@ -30,13 +30,7 @@ def train(gen: int, nb_ep: int,stdout_dir,batch_dir, init_model = None):
         sp2 = subprocess.Popen(f"python3 {init_model}.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=open("logs/players/log2.txt","w"))
     
     else:
-    
-        try:
-            os.system(f"cp session_models/model_{gen}.pt models/currDQN.pt")
-    
-        except FileNotFoundError:
-            print("No base model -- Initializing random model")
-    
+        os.system(f"cp session_models/model_{gen}.pt models/currDQN.pt")
         sp2 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=open("logs/players/log2.txt","w"))
     
     #wait for agents to be running
@@ -99,7 +93,7 @@ def train(gen: int, nb_ep: int,stdout_dir,batch_dir, init_model = None):
 
 NB_GEN = 3
 EP_PER_GEN = 626
-INIT_MODEL = "greedy"
+INIT_MODEL = None
 
 batch_dir = f'logs/games/batch_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}' 
 stdout_dir = f'logs/stdout/stdout_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}' 
@@ -110,7 +104,8 @@ os.mkdir(f"{batch_dir}/player2")
 date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 
 # For now initialize with greedy as first trainer
-train(-1,nb_ep=EP_PER_GEN,batch_dir = batch_dir,stdout_dir = stdout_dir)
+if not os.path.exists("session_models/model_0.pt"):
+    train(-1,nb_ep=EP_PER_GEN,batch_dir = batch_dir,stdout_dir = stdout_dir)
 
 for gen in range(NB_GEN):
 
