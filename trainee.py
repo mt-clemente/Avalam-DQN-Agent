@@ -31,11 +31,14 @@ import torch.optim as optim
 
 INF = 2**32-1
 
+
 class MyAgent(Agent):
 
     """My Avalam agent."""
 
-    def __init__(self) -> None:
+    def __init__(self, _train = True) -> None:
+
+        self._train = _train
 
         # ---------- AlphaBeta init ----------
 
@@ -56,8 +59,8 @@ class MyAgent(Agent):
         self.GAMMA = 0.95
         self.EPS_START = 0.9
         self.EPS_END = 0.05
-        self.EPS_DECAY = 500
-        self.TARGET_UPDATE = 200
+        self.EPS_DECAY = 200
+        self.TARGET_UPDATE = 125
         self.steps_done = 0
         self.eog_flag = 0
         self.BACTH_ROUNDS = 5
@@ -100,18 +103,21 @@ class MyAgent(Agent):
             batch_size=self.BATCH_SIZE
             )
 
+    def play(self, percepts, player, step, time_left):
 
-    def play(self, percepts, player, step, time_left, _train=False):
-
+        
 
         self.eog_flag = step
-
-        board: Board = dict_to_board(percepts)
-
+        if player == 1:
+            board: Board = dict_to_board(percepts)
+        else:
+            board: Board = Board(percepts['m'],invert= True)
         best_move = BestMove()
 
+        print(board,sys.stderr)
+
         # play normally  using the policy net as heuristic
-        if not _train:
+        if not self._train:
             abs(alphabeta(
                     board,
                     0,
@@ -125,9 +131,10 @@ class MyAgent(Agent):
             return best_move.move
 
 
+
         # ----------- TRAIN THE MODEL -----------
 
-        self.update_best_move(board,player,best_move)
+        self.update_best_move(board = board,player = player,best_move = best_move)
 
         reward = calc_reward(board.clone(), best_move.move)
 
@@ -161,9 +168,6 @@ class MyAgent(Agent):
         if self.num_episode % self.TARGET_UPDATE == 0:
 
             self.target_net.load_state_dict(self.policy_net.state_dict())
-
-            torch.save(self.policy_net.state_dict(),
-                       f'models/checkpoints/mod_{self.date}.pt')
             torch.save(self.policy_net.state_dict(), f'models/currDQN.pt')
 
         return best_move.move
@@ -188,7 +192,7 @@ class MyAgent(Agent):
                                             if s is not None]) """
 
 
-            state_batch =  torch.from_numpy(batch.state ).float().unsqueeze(1).to(self.device)
+            state_batch =  torch.from_numpy(batch.state).float().unsqueeze(1).to(self.device)
             reward_batch =  torch.from_numpy(batch.reward).to(self.device)
             weights = torch.FloatTensor(batch.weights).to(self.device)
 
@@ -245,7 +249,7 @@ class MyAgent(Agent):
             self.memory.update_priorities(batch.indices, new_priorities)
 
 
-    def update_best_move(self, board, player, best_move) -> None:
+    def update_best_move(self, board , player, best_move) -> None:
         
         # greedy epsilon policy
         eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
@@ -340,4 +344,4 @@ def alphabeta(state: Board, depth: int, max_depth: int, player: int, alpha, beta
 
 
 if __name__ == "__main__":
-    agent_main(MyAgent())
+    agent_main(MyAgent(_train = True))

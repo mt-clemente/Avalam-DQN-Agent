@@ -19,8 +19,8 @@ port2 = 8329
 
 #initialize agents
 sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True,stdout=open(f"{sdout_file}.txt","w"),stderr=open("logs/players/log1.txt","w"))
-sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=open("logs/players/log2.txt","w"))
-time.sleep(2.5)
+sp2 = subprocess.Popen(f"python3 random_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=open("logs/players/log2.txt","w"))
+time.sleep(5)
 
 #training parameters
 episodes = 100
