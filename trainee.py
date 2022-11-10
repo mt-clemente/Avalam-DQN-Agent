@@ -83,7 +83,7 @@ class MyAgent(Agent):
         try:
             self.policy_net = DQN(board_height, board_width,
                                   1, self.device).to(self.device)
-            self.policy_net.load_state_dict(torch.load('models/currDQN.pt'))
+            self.policy_net.load_state_dict(torch.load('models/currDQN.pt',map_location=torch.device(self.device)))
         except FileNotFoundError:
             print("NEW MODEL",sys.stderr)
             self.policy_net = DQN(board_height, board_width,
