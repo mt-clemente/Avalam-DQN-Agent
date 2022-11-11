@@ -207,23 +207,18 @@ class MyAgent(Agent):
             # This is merged based on the mask, such that we'll have either the expected
             # state value or 0 in case the state was final.
             next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
+            _next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
+            mask = [i for i in range(self.BATCH_SIZE) if batch.next_state[i]]
 
 
-            t = datetime.now()
+            
 
             with torch.no_grad():
-                for i in range(self.BATCH_SIZE):
-                    # Compute the expected Q values
-                    state = batch.next_state[i]
-                    actions = list(state.get_actions())
-                    if not actions:
-                        continue
-                    next_state_values[i] = torch.max(self.target_net(
-                        torch.tensor([state.clone().play_action(act).m for act in actions]).unsqueeze(1).float()
-                        ))
 
-            print(datetime.now() - t)
-
+                next_state_values[mask] = torch.tensor([torch.max(self.target_net(
+                        torch.from_numpy(get_all_possible_outcomes(batch.next_state[i])).unsqueeze(1).float().to(self.device))) for i in mask]).to(self.device)
+                
+                
             expected_state_action_values = (
                 next_state_values * self.GAMMA) + reward_batch
 
@@ -272,6 +267,26 @@ class MyAgent(Agent):
             act = actions[np.random.randint(len(actions))]
             best_move.update(act)
 
+def get_all_possible_outcomes(state : Board):
+
+    actions = list(state.get_actions())
+    m = np.array(state.m)
+    return np.apply_along_axis(lambda action :_play_action(m,action),axis=1,arr = actions)
+
+
+def _play_action(state, action):
+
+    temp = state.copy()
+    i1, j1, i2, j2 = action
+    h1 = abs(temp[i1][j1])
+    h2 = abs(temp[i2][j2])
+    if temp[i1][j1] < 0:
+        temp[i2][j2] = -(h1 + h2)
+    else:
+        temp[i2][j2] = h1 + h2
+    temp[i1][j1] = 0
+    return temp
+
 
 def calc_reward(state: Board, action):
     new_state = state.clone().play_action(action)
@@ -294,9 +309,6 @@ def calc_reward(state: Board, action):
 
     return 0
 
-def get_all_possible_outcomes(state : Board) -> np.ndarray:
-    actions = list(state.get_actions())
-    state.play_action
 
 
 # Alpha Beta pruning algorithm, best_move is modified in place

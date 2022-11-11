@@ -15,8 +15,8 @@ def train(gen: int, nb_ep: int,stdout_dir,batch_dir, init_model = None):
 
 
     #chose ports change them just to be safe in case a port doesnt get freed
-    port1 = 8101 + 2 * gen
-    port2 = 8102 + 2 * gen
+    port1 = 8201 + 2 * gen
+    port2 = 8202 + 2 * gen
 
     #initialize agents
     # they both start with the same model but only one is training, the other is idle.
@@ -91,8 +91,8 @@ def train(gen: int, nb_ep: int,stdout_dir,batch_dir, init_model = None):
 
 # ---------------  GENERATION TRAINING --------------- 
 
-NB_GEN = 3
-EP_PER_GEN = 626
+NB_GEN = 0
+EP_PER_GEN = 100
 INIT_MODEL = "greedy"
 
 batch_dir = f'logs/games/batch_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}' 
@@ -114,4 +114,5 @@ for gen in range(NB_GEN):
 
 os.mkdir(f"saved_models/models_{date}/")
 os.system(f"cp -a session_models/ saved_models/models_{date}/")
+os.system(f"rm saved_models/models_{date}/session_models/.gitkeep")
 os.system(f"rm session_models/* !.gitkeep")
