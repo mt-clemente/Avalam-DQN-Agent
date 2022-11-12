@@ -7,6 +7,6 @@ ssh/vm1/*
 ssh/vm2/*
 rainbow-is*
 stdout/
-
+runs
 
 !*.gitkeep
