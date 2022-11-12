@@ -92,7 +92,7 @@ def train(gen: int, nb_ep: int,stdout_dir,batch_dir, init_model = None):
 # ---------------  GENERATION TRAINING --------------- 
 
 NB_GEN = 0
-EP_PER_GEN = 100
+EP_PER_GEN = 7
 INIT_MODEL = "greedy"
 
 batch_dir = f'logs/games/batch_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}' 
@@ -104,7 +104,8 @@ os.mkdir(f"{batch_dir}/player2")
 date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 
 # For now initialize with greedy as first trainer
-train(-1,nb_ep=EP_PER_GEN,batch_dir = batch_dir,stdout_dir = stdout_dir)
+if INIT_MODEL:
+    train(-1,nb_ep=EP_PER_GEN,batch_dir = batch_dir,stdout_dir = stdout_dir)
 
 for gen in range(NB_GEN):
 

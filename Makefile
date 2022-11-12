@@ -33,7 +33,7 @@ dl1:
 	gcloud compute scp --project avalam-dqn-367921 --zone us-west1-b --recurse deeplearning-1-vm:~/Avalam-DQN-Agent/$d ./ssh/vm1
 
 dl2:
-	gcloud compute scp --project avalam-dqn-367921 --zone us-west2-a --recurse deeplearning-1-vm:~/Avalam-DQN-Agent/$d ./ssh/vm2
+	gcloud compute scp --project avalam-dqn-367921 --zone us-west2-a --recurse deeplearning-2-vm:~/Avalam-DQN-Agent/$d ./ssh/vm2
 
 push_model1:
 	gcloud compute scp --project avalam-dqn-367921 --zone us-west1-b --recurse $(m) deeplearning-1-vm:~/Avalam-DQN-Agent/session_models/model_0.pt

@@ -14,8 +14,8 @@ sdout_file = f'logs/stdout/stdout_{datetime.now()}'
 os.mkdir(batch_dir)
 
 #chose ports
-port1 = 8328
-port2 = 8329
+port1 = 8558
+port2 = 8559
 
 #initialize agents
 sp1 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port1}",shell=True,stdout=open(f"{sdout_file}.txt","w"),stderr=open("logs/players/log1.txt","w"))

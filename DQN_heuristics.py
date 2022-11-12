@@ -1,9 +1,7 @@
-from collections import deque, namedtuple
+from collections import deque
 import random
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from avalam import Board
 from segment_tree import MinSegmentTree, SumSegmentTree
 
