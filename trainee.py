@@ -24,10 +24,11 @@ import random
 import sys
 import torch.nn as nn
 import numpy as np
-from DQN_heuristics import DQN, PrioritizedReplayMemory, ReplayMemory, BestMove, MoveBuffer
+from DQN_heuristics import DQN, PrioritizedReplayMemory,  BestMove, MoveBuffer
 from avalam import *
 import torch
 import torch.optim as optim
+from torch.utils.tensorboard import SummaryWriter
 
 INF = 2**32-1
 
@@ -59,7 +60,7 @@ class MyAgent(Agent):
         self.GAMMA = 0.95
         self.EPS_START = 0.9
         self.EPS_END = 0.05
-        self.EPS_DECAY = 200
+        self.EPS_DECAY = 100 * 17
         self.TARGET_UPDATE = 125
         self.steps_done = 0
         self.eog_flag = 0
@@ -77,8 +78,12 @@ class MyAgent(Agent):
         # transition we have to save the next state as the board resulting
         # from the opponent's move, hence the need for a buffer
 
-
         self.buffer = MoveBuffer()
+
+        # logging
+        self.writer = SummaryWriter()
+        self.ep_score = 0
+
 
         # try to load the model obtained from previous training
         try:
@@ -107,7 +112,6 @@ class MyAgent(Agent):
     def play(self, percepts, player, step, time_left):
 
 
-        self.eog_flag = step
         if player == 1:
             board: Board = dict_to_board(percepts)
         else:
@@ -162,12 +166,19 @@ class MyAgent(Agent):
         if step < self.eog_flag:
             self.num_episode += 1
             self.buffer.reset()
+            self.writer.add_scalar("Performance/Episode score",next_board.get_score(), self.num_episode)
+        else:
+            self.ep_score = next_board.get_score()
+        
+        self.eog_flag = step
+        
         
         # Update the target network and checkpoint the policy net
         if self.num_episode % self.TARGET_UPDATE == 0:
 
             self.target_net.load_state_dict(self.policy_net.state_dict())
             torch.save(self.policy_net.state_dict(), f'models/currDQN.pt')
+
 
 
         return best_move.move
@@ -202,6 +213,8 @@ class MyAgent(Agent):
             # columns of actions taken. These are the actions which would've been taken
             # for each batch state according to policy_net
             state_action_values = self.policy_net(state_batch)
+
+            self.writer.add_scalar("Q values/State Values",torch.mean(state_action_values).item(),self.steps_done * self.BACTH_ROUNDS + i)
 
             # Compute V(s_{t+1}) for all next states.
             # Expected values of actions for non_final_next_states are computed based
@@ -246,6 +259,8 @@ class MyAgent(Agent):
             expected_state_action_values = (
                 next_state_values * self.GAMMA) + reward_batch
 
+            self.writer.add_scalar("Q values/Expected Q values",torch.mean(expected_state_action_values).item(),self.steps_done * self.BACTH_ROUNDS + i)
+            self.writer.add_scalar("Performance/Rewards",torch.mean(reward_batch),self.steps_done * self.BACTH_ROUNDS + i)
 
 
             # Compute Huber loss
@@ -254,7 +269,9 @@ class MyAgent(Agent):
                             expected_state_action_values.unsqueeze(1))
             
             loss = torch.mean(eltwise_loss * weights)
+            self.writer.add_scalar("Q values/Loss",torch.mean(expected_state_action_values).item(),self.steps_done * self.BACTH_ROUNDS + i)
 
+            self.writer.add_scalar("Expected Q value",torch.mean(loss).item(),self.steps_done * self.BACTH_ROUNDS + i)
             # Optimize the model
 
             self.optimizer.zero_grad()
@@ -275,6 +292,7 @@ class MyAgent(Agent):
         eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
             np.exp(-1. * self.steps_done / self.EPS_DECAY)
 
+        self.writer.add_scalar("Epsilon",eps_threshold,self.steps_done)
         self.steps_done += 1
 
         # using policy net
@@ -302,7 +320,6 @@ class MyAgent(Agent):
         return t
 
         
-
 
 def get_all_possible_outcomes(state : Board):
 

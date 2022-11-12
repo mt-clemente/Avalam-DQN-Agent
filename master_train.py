@@ -7,8 +7,6 @@ import psutil
 
 
 
-
-
 def train(gen: int, nb_ep: int,stdout_dir,batch_dir, init_model = None):
 
 
@@ -91,8 +89,10 @@ def train(gen: int, nb_ep: int,stdout_dir,batch_dir, init_model = None):
 
 # ---------------  GENERATION TRAINING --------------- 
 
-NB_GEN = 0
-EP_PER_GEN = 7
+
+
+NB_GEN = 3
+EP_PER_GEN = 650
 INIT_MODEL = "greedy"
 
 batch_dir = f'logs/games/batch_{datetime.now().strftime("%Y_%m_%d_%H_%M_%S")}' 
