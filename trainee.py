@@ -56,7 +56,7 @@ class MyAgent(Agent):
             "cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_episode = 0
-        self.BATCH_SIZE = 64
+        self.BATCH_SIZE = 256
         self.GAMMA = 0.95
         self.EPS_START = 0.9
         self.EPS_END = 0.05
@@ -89,7 +89,7 @@ class MyAgent(Agent):
         try:
             self.policy_net = DQN(board_height, board_width,
                                   1, self.device).to(self.device)
-            self.policy_net.load_state_dict(torch.load('models/currDQN.pt',map_location=torch.device(self.device)))
+            self.policy_net.load_state_dict(torch.load('models/currDQN.pt'))
         except FileNotFoundError:
             print("NEW MODEL",sys.stderr)
             self.policy_net = DQN(board_height, board_width,
