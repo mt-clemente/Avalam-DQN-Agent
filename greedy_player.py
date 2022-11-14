@@ -25,7 +25,7 @@ class GreedyAgent(Agent):
 
     def __init__(self):
 
-        self.probability = 0.8
+        self.probability = 1
     
     """A dumb random agent."""
     def play(self, percepts, player, step, time_left):

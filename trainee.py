@@ -60,7 +60,7 @@ class MyAgent(Agent):
         self.GAMMA = 0.95
         self.EPS_START = 0.9
         self.EPS_END = 0.05
-        self.EPS_DECAY = 100 * 17
+        self.EPS_DECAY = 17 * 100
         self.TARGET_UPDATE = 125
         self.steps_done = 0
         self.eog_flag = 0
@@ -91,7 +91,6 @@ class MyAgent(Agent):
                                   1, self.device).to(self.device)
             self.policy_net.load_state_dict(torch.load('models/currDQN.pt'))
         except FileNotFoundError:
-            raise BaseException
             print("NEW MODEL",sys.stderr)
             self.policy_net = DQN(board_height, board_width,
                                   1, self.device).to(self.device)
@@ -120,8 +119,6 @@ class MyAgent(Agent):
         best_move = BestMove()
 
 
-        print(player)
-        print(board)
 
         # play normally  using the policy net as heuristic
         if not self._train:
@@ -143,7 +140,7 @@ class MyAgent(Agent):
 
         self.update_best_move(board = board,player = player,best_move = best_move)
 
-        reward = calc_reward(board.clone(), best_move.move)
+        reward = calc_reward(board.clone(),step, best_move.move)
 
         # Observe new state
         next_board = board.clone()
@@ -170,7 +167,7 @@ class MyAgent(Agent):
         if step < self.eog_flag:
             self.num_episode += 1
             self.buffer.reset()
-            self.writer.add_scalar("Performance/Episode score",next_board.get_score(), self.num_episode)
+            self.writer.add_scalar("Performance/Episode score",self.ep_score, self.num_episode)
         else:
             self.ep_score = next_board.get_score()
         
@@ -249,13 +246,11 @@ class MyAgent(Agent):
                     indices[i,0:sizes[i]] = torch.arange(k,k+sizes[i],dtype=torch.int64,device=self.device)
                     k+= sizes[i]
                 
-                # padded_target_values = torch.cat((torch.tensor([0],device=self.device).resize(1,1),target_vals))
 
                 rep = torch.transpose(target_vals.repeat((1,len(sizes))),0,1)
                 grouped_target_vals = torch.gather(rep,1,indices)
                 
-                # there are a lot of recurring values due to our process, max works faster with sparse tensors.
-                next_state_values[mask]  =torch.max(grouped_target_vals - grouped_target_vals[0,0],dim = 1)[0] + grouped_target_vals[0,0]
+                next_state_values[mask]  =torch.max(grouped_target_vals,dim = 1)[0]
 
 
             _next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
@@ -284,9 +279,8 @@ class MyAgent(Agent):
                             expected_state_action_values.unsqueeze(1))
             
             loss = torch.mean(eltwise_loss * weights)
-            self.writer.add_scalar("Q values/Loss",torch.mean(expected_state_action_values).item(),self.steps_done * self.BACTH_ROUNDS + i)
 
-            self.writer.add_scalar("Expected Q value",torch.mean(loss).item(),self.steps_done * self.BACTH_ROUNDS + i)
+            self.writer.add_scalar("Loss",torch.mean(loss).item(),self.steps_done * self.BACTH_ROUNDS + i)
             # Optimize the model
 
             self.optimizer.zero_grad()
@@ -359,10 +353,31 @@ def _play_action(state, action):
 
 
 
-def calc_reward(state: Board, action):
+def calc_reward(state: Board, step,action):
+
+    # the game cannot be finished quicker than 16 moves / player
+    # this saves us quite a lot of computing
+    if step < 15:
+        return 0
+
     new_state = state.clone().play_action(action)
 
-    return new_state.get_score() - state.get_score()
+    if new_state.is_finished():
+        return new_state.get_score()
+    
+    actions = list(new_state.get_actions())
+    
+    s = []
+    for i in range(len(actions)):
+        opp_state = new_state.clone().play_action(actions[i])
+        if opp_state.is_finished():
+            s.append(opp_state.get_score())
+    
+    if s:
+        return min(s)
+    
+    return 0
+    
 
 
 

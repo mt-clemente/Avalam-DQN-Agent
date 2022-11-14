@@ -8,5 +8,5 @@ ssh/vm2/*
 rainbow-is*
 stdout/
 runs
-
+*.zip
 !*.gitkeep

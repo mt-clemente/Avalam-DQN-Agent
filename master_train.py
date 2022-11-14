@@ -13,8 +13,8 @@ def train(gen: int, nb_ep: int, init_model = None):
 
 
     #chose ports change them just to be safe in case a port doesnt get freed
-    port1 = 8481 + 2 * gen
-    port2 = 8482 + 2 * gen
+    port1 = 8451 + 2 * gen
+    port2 = 8452 + 2 * gen
 
     #initialize agents
     # they both start with the same model but only one is training, the other is idle.
@@ -22,7 +22,7 @@ def train(gen: int, nb_ep: int, init_model = None):
 
 
     player = 1
-    sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True)
+    sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     
     if init_model:
         sp2 = subprocess.Popen(f"python3 {init_model}.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -89,7 +89,7 @@ def train(gen: int, nb_ep: int, init_model = None):
 
 
 NB_GEN = 0
-EP_PER_GEN = 20
+EP_PER_GEN = 1400
 INIT_MODEL = "greedy_player"
 
 

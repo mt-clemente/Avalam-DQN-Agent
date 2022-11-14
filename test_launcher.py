@@ -17,11 +17,11 @@ port2 = 8169
 
 #initialize agents
 sp1 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port1}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+sp2 = subprocess.Popen(f"python3 random_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(5)
 
 #test parameters
-episodes = 1
+episodes = 50
 start = time.time()
 
 files=[]
