@@ -3,42 +3,46 @@ import subprocess
 import time
 import os
 import psutil
-
+import parse
 
 #TODO: Try to multithread (go back to Popen + wait for all process to finish at then end. Maybe not doable for model optimization)
 
 
 
-batch_dir = f'logs/games/batch_{datetime.now()}' 
 sdout_file = f'logs/stdout/stdout_{datetime.now()}' 
-os.mkdir(batch_dir)
 
 #chose ports
-port1 = 8558
-port2 = 8559
+port1 = 8168
+port2 = 8169
 
 #initialize agents
-sp1 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port1}",shell=True,stdout=open(f"{sdout_file}.txt","w"),stderr=open("logs/players/log1.txt","w"))
-sp2 = subprocess.Popen(f"python3 random_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=open("logs/players/log2.txt","w"))
+sp1 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port1}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 time.sleep(5)
 
-#training parameters
-episodes = 100
+#test parameters
+episodes = 1
 start = time.time()
 
-s=[]
 files=[]
+wins = 0
 for i in range(episodes):
-    f = open(f"{batch_dir}/log_{datetime.now()}.txt","w")
     t = datetime.now()
-    p = subprocess.call(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=f)
-    print(f"episode {i} done in {datetime.now() - t}")
+    p = subprocess.Popen(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=subprocess.PIPE)
+    out,err = p.communicate()
+    score = out.decode().rpartition('Score')[2]
+    score = int(parse.parse("{} .{}", score)[0])
+    if score > 0:
+        wins += 1
+        print(f"episode {i} WON - s = {score}")
+    else:
+        print(f"episode {i} LOST  - s = {score}")
+
 
 
 end = time.time()
 
-print("Total time = ", end - start)
-print("Epoch time = ", (end - start)/episodes)
+print(f'winrate : {wins/episodes * 100}% on {episodes} games')
 
 
 # noticed some issues when killing processes right away. TODO: fix that
@@ -62,11 +66,3 @@ parent = psutil.Process(parent_pid)
 for child in parent.children(recursive=True):
     child.kill()
 parent.kill()
-
-
-# game
-parent_pid = os.getpgid(s.pid) 
-parent = psutil.Process(parent_pid)
-for child in parent.children(recursive=True):
-    child.kill()
-parent.kill() 

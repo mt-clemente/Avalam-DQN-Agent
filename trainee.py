@@ -56,7 +56,7 @@ class MyAgent(Agent):
             "cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_episode = 0
-        self.BATCH_SIZE = 256
+        self.BATCH_SIZE = 64
         self.GAMMA = 0.95
         self.EPS_START = 0.9
         self.EPS_END = 0.05
@@ -91,6 +91,7 @@ class MyAgent(Agent):
                                   1, self.device).to(self.device)
             self.policy_net.load_state_dict(torch.load('models/currDQN.pt'))
         except FileNotFoundError:
+            raise BaseException
             print("NEW MODEL",sys.stderr)
             self.policy_net = DQN(board_height, board_width,
                                   1, self.device).to(self.device)
@@ -118,6 +119,9 @@ class MyAgent(Agent):
             board: Board = Board(percepts['m'],invert= True)
         best_move = BestMove()
 
+
+        print(player)
+        print(board)
 
         # play normally  using the policy net as heuristic
         if not self._train:
@@ -154,7 +158,7 @@ class MyAgent(Agent):
                 self.buffer.reward)
 
         self.buffer.update(
-            statem=torch.FloatTensor(next_board.m)[None, None],
+            statem=torch.tensor(next_board.m)[None, None].float(),
             reward=torch.tensor([reward], device=self.device)
         )
 
@@ -251,8 +255,19 @@ class MyAgent(Agent):
                 grouped_target_vals = torch.gather(rep,1,indices)
                 
                 # there are a lot of recurring values due to our process, max works faster with sparse tensors.
-                next_state_values[mask]  =torch.max(grouped_target_vals - grouped_target_vals[0,0],dim = 1)[0] + - grouped_target_vals[0,0]
+                next_state_values[mask]  =torch.max(grouped_target_vals - grouped_target_vals[0,0],dim = 1)[0] + grouped_target_vals[0,0]
 
+
+            _next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
+            mask = [i for i in range(self.BATCH_SIZE) if batch.next_state[i]]
+
+
+            
+
+            with torch.no_grad():
+
+                _next_state_values[mask] = torch.tensor([torch.max(self.target_net(
+                        torch.from_numpy(get_all_possible_outcomes(batch.next_state[i])).unsqueeze(1).float().to(self.device))) for i in mask]).to(self.device)
 
 
 
