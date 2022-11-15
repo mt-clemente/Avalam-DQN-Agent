@@ -48,7 +48,7 @@ def train(gen: int, nb_ep: int, init_model = None):
             player = player%2 + 1
 
         t = datetime.now()
-        subprocess.call(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        subprocess.call(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True)
 
         print(f"GEN {gen} -- episode {i} done in {datetime.now() - t}")
 
@@ -88,7 +88,7 @@ def train(gen: int, nb_ep: int, init_model = None):
 
 
 
-NB_GEN = 0
+NB_GEN = 1
 EP_PER_GEN = 1400
 INIT_MODEL = "greedy_player"
 

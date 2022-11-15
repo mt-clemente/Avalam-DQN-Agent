@@ -1,0 +1,1 @@
+ * 9 * 9 -> 64 -> 32 learned greedy policy exactly in 1400 games
