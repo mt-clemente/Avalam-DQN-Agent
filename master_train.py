@@ -22,7 +22,7 @@ def train(gen: int, nb_ep: int, init_model = None):
 
 
     player = 1
-    sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True,stderr=subprocess.DEVNULL)
     
     if init_model:
         sp2 = subprocess.Popen(f"python3 {init_model}.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -43,14 +43,14 @@ def train(gen: int, nb_ep: int, init_model = None):
     for i in range(nb_ep):
         
         #random playing first or second
-        if random.random() > 1:
+        if random.random() > 0.5:
             port1, port2 = port2, port1
             player = player%2 + 1
 
         t = datetime.now()
-        subprocess.call(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True)
+        subprocess.call(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=subprocess.DEVNULL)
 
-        print(f"GEN {gen} -- episode {i} done in {datetime.now() - t}")
+        print(f"GEN {gen} -- episode {i} done in {datetime.now() - t} as player {player}")
 
 
     end = time.time()
@@ -88,8 +88,8 @@ def train(gen: int, nb_ep: int, init_model = None):
 
 
 
-NB_GEN = 1
-EP_PER_GEN = 1400
+NB_GEN = 0
+EP_PER_GEN = 4400 * 3
 INIT_MODEL = "greedy_player"
 
 

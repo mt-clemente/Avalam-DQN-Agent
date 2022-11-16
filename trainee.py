@@ -20,6 +20,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 
 from collections import namedtuple
 from datetime import datetime
+from itertools import islice
 import random
 import sys
 import torch.nn as nn
@@ -37,10 +38,10 @@ class MyAgent(Agent):
 
     """My Avalam agent."""
 
-    def __init__(self, _train = True) -> None:
+    def __init__(self, _train = True,_test = False) -> None:
 
         self._train = _train
-
+        self._test = _test 
         # ---------- AlphaBeta init ----------
 
         self.MAX_DEPTH = 1
@@ -56,12 +57,13 @@ class MyAgent(Agent):
             "cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_episode = 0
-        self.BATCH_SIZE = 64
+        self.BATCH_SIZE = 256
         self.GAMMA = 0.95
         self.EPS_START = 0.9
         self.EPS_END = 0.05
-        self.EPS_DECAY = 17 * 100
-        self.TARGET_UPDATE = 125
+        self.EPS_DECAY = 50
+        self.TRAIN_FREQ = 25
+        self.TARGET_UPDATE = 4
         self.steps_done = 0
         self.eog_flag = 0
         self.BACTH_ROUNDS = 5
@@ -103,11 +105,13 @@ class MyAgent(Agent):
 
         self.optimizer = optim.Adam(self.policy_net.parameters(),amsgrad=True,lr =self.lr)
         self.memory = PrioritizedReplayMemory(
-            size = 50000,
+            size = 100000,
             Transition = self.Transition,
             alpha = self.alpha,
             batch_size=self.BATCH_SIZE
             )
+
+
 
     def play(self, percepts, player, step, time_left):
 
@@ -122,25 +126,30 @@ class MyAgent(Agent):
 
         # play normally  using the policy net as heuristic
         if not self._train:
-            abs(alphabeta(
-                    board,
-                    0,
-                    max_depth=self.MAX_DEPTH,
-                    player=player,
-                    alpha=-INF,
-                    beta=INF,
-                    best_move=best_move,
-                    heuristic=self.policy_net
-                    ))
-            return best_move.move
+            if self._test or random.random() > 0.75:  
+                abs(alphabeta(
+                        board,
+                        0,
+                        max_depth=self.MAX_DEPTH,
+                        player=1,
+                        alpha=-INF,
+                        beta=INF,
+                        best_move=best_move,
+                        heuristic=self.policy_net
+                        ))
+                return best_move.move
+            else:
+                return random.choice(list(board.get_actions()))        
+
 
 
 
         # ----------- TRAIN THE MODEL -----------
 
-        self.update_best_move(board = board,player = player,best_move = best_move)
+        self.update_best_move(board = board,best_move = best_move)
 
         reward = calc_reward(board.clone(),step, best_move.move)
+
 
         # Observe new state
         next_board = board.clone()
@@ -161,7 +170,8 @@ class MyAgent(Agent):
 
 
         # Perform one step of the optimization (on the policy network)
-        self.optimize_model(self.BACTH_ROUNDS)
+        if self.num_episode % self.TRAIN_FREQ == 0: 
+            self.optimize_model(self.BACTH_ROUNDS)
         
         # detect end of episode
         if step < self.eog_flag:
@@ -175,7 +185,7 @@ class MyAgent(Agent):
         
         
         # Update the target network and checkpoint the policy net
-        if self.num_episode % self.TARGET_UPDATE == 0:
+        if self.num_episode % self.TARGET_UPDATE * self.TRAIN_FREQ == 0:
 
             self.target_net.load_state_dict(self.policy_net.state_dict())
             torch.save(self.policy_net.state_dict(), f'models/currDQN.pt')
@@ -270,7 +280,7 @@ class MyAgent(Agent):
                 next_state_values * self.GAMMA) + reward_batch
 
             self.writer.add_scalar("Q values/Expected Q values",torch.mean(expected_state_action_values).item(),self.steps_done * self.BACTH_ROUNDS + i)
-            self.writer.add_scalar("Performance/Rewards",torch.mean(reward_batch),self.steps_done * self.BACTH_ROUNDS + i)
+            self.writer.add_scalar("Performance/Batch Rewards",torch.mean(reward_batch),self.steps_done * self.BACTH_ROUNDS + i)
 
 
             # Compute Huber loss
@@ -295,19 +305,23 @@ class MyAgent(Agent):
             self.memory.update_priorities(batch.indices, new_priorities)
 
 
-    def update_best_move(self, board , player, best_move) -> None:
+    def update_best_move(self, board, best_move) -> None:
         
         # greedy epsilon policy
         eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
-            np.exp(-1. * self.steps_done / self.EPS_DECAY)
+            np.exp(-1. * self.num_episode / self.EPS_DECAY)
 
         self.writer.add_scalar("Epsilon",eps_threshold,self.steps_done)
         self.steps_done += 1
 
         # using policy net
-        if random.random() > eps_threshold:
-            abs(alphabeta(board, 0, max_depth=self.MAX_DEPTH, player=player, alpha=-
+        if random.random() < 1 + eps_threshold:
+            
+            """ abs(alphabeta(board, 0, max_depth=self.MAX_DEPTH, player=1, alpha=-
                 INF, beta=INF, best_move=best_move, heuristic=self.policy_net))
+            """
+            best_move.update(self.greed(board))
+
             if best_move.move == None:
                 raise BaseException("No best move found")
         # random exploration
@@ -317,16 +331,16 @@ class MyAgent(Agent):
             best_move.update(act)
 
 
-    def extract_groups(self,values,sizes):
 
-        t = torch.zeros((self.BATCH_SIZE,np.max(sizes)),device= self.device)
-        s = 0 
+    def greed(self, board: Board):
+        
+        outcomes = get_all_possible_outcomes(board)
+        outcomes = torch.from_numpy(outcomes).unsqueeze(1).float().to(self.device)
+        target_vals = self.target_net(outcomes)
+        idx = torch.argmax(target_vals,dim = 0)
 
-        for i in range(self.BATCH_SIZE):   
-            t[i][s:s+sizes[i]] = values[s:s+sizes[i]]
-            s+=sizes[i]
+        return next(islice(board.get_actions(),idx,None),None)
 
-        return t
 
         
 
@@ -357,7 +371,7 @@ def calc_reward(state: Board, step,action):
 
     # the game cannot be finished quicker than 16 moves / player
     # this saves us quite a lot of computing
-    if step < 15:
+    if step == 16:
         return 0
 
     new_state = state.clone().play_action(action)
@@ -398,7 +412,6 @@ def alphabeta(state: Board, depth: int, max_depth: int, player: int, alpha, beta
         except StopIteration:
             break
 
-        # highly inefficient TODO: implement unplay action and remove temp
         temp = state.clone()
         temp = temp.play_action(act)
 
@@ -426,6 +439,8 @@ def alphabeta(state: Board, depth: int, max_depth: int, player: int, alpha, beta
                 break
 
     return val
+
+
 
 
 if __name__ == "__main__":

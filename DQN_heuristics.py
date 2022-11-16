@@ -1,10 +1,11 @@
 from collections import deque
 import random
+from types import SimpleNamespace
 import torch.nn as nn
 import torch.nn.functional as F
 from avalam import Board
 from segment_tree import MinSegmentTree, SumSegmentTree
-
+import json
 import numpy as np
 
 class ReplayMemory():
@@ -134,17 +135,18 @@ class PrioritizedReplayMemory():
 
     def __len__(self):
         return self.size
+        
 
 class DQN(nn.Module):
 
     def __init__(self, h, w, outputs,device):
         super(DQN, self).__init__()
         self.device = device
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=5)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.conv2 = nn.Conv2d(64, 32, kernel_size=3, stride=1)
-        self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=2, stride=1)
+        self.conv1 = nn.Conv2d(1, 9 * 9, kernel_size=5)
+        self.bn1 = nn.BatchNorm2d(9 * 9)
+        self.conv2 = nn.Conv2d(9 * 9, 64, kernel_size=3, stride=1)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.conv3 = nn.Conv2d(64, 32, kernel_size=2, stride=1)
         self.bn3 = nn.BatchNorm2d(32)
 
         # Number of Linear input connections depends on output of conv2d layers
