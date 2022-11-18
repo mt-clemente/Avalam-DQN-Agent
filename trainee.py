@@ -42,9 +42,11 @@ class MyAgent(Agent):
 
         self._train = _train
         self._test = _test 
-        # ---------- AlphaBeta init ----------
+
+        # ---------- AlphaBeta Param ----------
 
         self.MAX_DEPTH = 1
+        self.BEAM_WIDTH = 5
 
         # ---------- DQN init ----------
 
@@ -57,23 +59,24 @@ class MyAgent(Agent):
             "cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_episode = 0
-        self.BATCH_SIZE = 256
+        self.BATCH_SIZE = 64
         self.GAMMA = 0.95
         self.EPS_START = 0.9
         self.EPS_END = 0.05
-        self.EPS_DECAY = 50
-        self.TRAIN_FREQ = 25
-        self.TARGET_UPDATE = 4
+        self.EPS_DECAY = 800
+        self.TRAIN_FREQ = 20
+        self.TARGET_UPDATE = 5
         self.steps_done = 0
         self.eog_flag = 0
-        self.BACTH_ROUNDS = 5
+        self.BACTH_ROUNDS = 20
         board_height = 9
         board_width = 9
-        self.lr = 1 * 10 ** -4
+        self.lr = 3 * 10 ** -4
 
         self.alpha = 1.8
         self.beta = 0.4
         self.prio_epsilon = 1e-6
+
 
         # as the opponent is not learning, the oppnent's moves must be
         # considered an environment reaction. Which means that to store a
@@ -83,7 +86,8 @@ class MyAgent(Agent):
         self.buffer = MoveBuffer()
 
         # logging
-        self.writer = SummaryWriter()
+        if _train:
+            self.writer = SummaryWriter()
         self.ep_score = 0
 
 
@@ -116,6 +120,8 @@ class MyAgent(Agent):
     def play(self, percepts, player, step, time_left):
 
 
+
+
         if player == 1:
             board: Board = dict_to_board(percepts)
         else:
@@ -123,25 +129,30 @@ class MyAgent(Agent):
         best_move = BestMove()
 
 
-
         # play normally  using the policy net as heuristic
         if not self._train:
-            if self._test or random.random() > 0.75:  
-                abs(alphabeta(
-                        board,
-                        0,
-                        max_depth=self.MAX_DEPTH,
-                        player=1,
-                        alpha=-INF,
-                        beta=INF,
-                        best_move=best_move,
-                        heuristic=self.policy_net
-                        ))
-                return best_move.move
-            else:
-                return random.choice(list(board.get_actions()))        
 
+            self.policy_net.eval()
+            with torch.no_grad():
+                if self._test:
+                    self.alphabeta(
+                            board,
+                            0,
+                            max_depth=self.MAX_DEPTH,
+                            player=1,
+                            alpha=-INF,
+                            beta=INF,
+                            best_move=best_move,
+                            )
+                    
+                elif random.random() > 0.75:
+                
+                    best_move.update(self.greed(board))
+                    return best_move.move
+                else:
+                    return random.choice(list(board.get_actions()))        
 
+        self.policy_net.train()
 
 
         # ----------- TRAIN THE MODEL -----------
@@ -263,18 +274,6 @@ class MyAgent(Agent):
                 next_state_values[mask]  =torch.max(grouped_target_vals,dim = 1)[0]
 
 
-            _next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
-            mask = [i for i in range(self.BATCH_SIZE) if batch.next_state[i]]
-
-
-            
-
-            with torch.no_grad():
-
-                _next_state_values[mask] = torch.tensor([torch.max(self.target_net(
-                        torch.from_numpy(get_all_possible_outcomes(batch.next_state[i])).unsqueeze(1).float().to(self.device))) for i in mask]).to(self.device)
-
-
 
             expected_state_action_values = (
                 next_state_values * self.GAMMA) + reward_batch
@@ -333,16 +332,82 @@ class MyAgent(Agent):
 
 
     def greed(self, board: Board):
-        
-        outcomes = get_all_possible_outcomes(board)
-        outcomes = torch.from_numpy(outcomes).unsqueeze(1).float().to(self.device)
-        target_vals = self.target_net(outcomes)
-        idx = torch.argmax(target_vals,dim = 0)
+
+        outcomes_np = get_all_possible_outcomes(board)
+        outcomes = torch.from_numpy(outcomes_np).unsqueeze(1).float().to(self.device)
+        target_vals = self.policy_net(outcomes)
+        idx = torch.argmax(target_vals)
 
         return next(islice(board.get_actions(),idx,None),None)
 
 
+
+    # Alpha Beta pruning algorithm, best_move is modified in place.
+
+    def alphabeta(self, state: Board, depth: int, max_depth: int, player: int, alpha, beta, best_move: BestMove):
+
+
+        if state.is_finished():
+            return np.sign(state.get_score()) * 500
+
+        if depth == max_depth:
+            return self.policy_net(torch.tensor(state.m).float()[None,None])
+
+
+        actions = list(state.get_actions())
+
+
+        outcomes_np = get_all_possible_outcomes(state)
+        outcomes = torch.from_numpy(outcomes_np).unsqueeze(1).float().to(self.device)
+        heur_vals = self.policy_net(outcomes).cpu().numpy()
+                
+
+    
+        # beam search of width self.BEAM_WIDTH
+        try:
+            part_idx = np.argpartition(heur_vals, self.BEAM_WIDTH)[:self.BEAM_WIDTH]
         
+        #if the index is out of range it means that the beam covers all the leafs
+        except ValueError:
+            part_idx = np.arange(len(outcomes_np))
+
+
+        val = - player * INF
+
+        for idx in part_idx:
+
+            act = actions[idx]
+            temp = state.clone()
+            temp = temp.play_action(act)
+
+            ab = self.alphabeta(temp, depth + 1, max_depth, -player, alpha,
+                        beta, best_move)
+
+            if player == 1:
+
+                if depth == 0 and ab > val:
+                    best_move.update(act)
+
+                val = max(val, ab)
+                alpha = max(alpha, val)
+                if val > beta:
+                    break
+
+            else:
+                if depth == 0 and ab < val:
+                    best_move.update(act)
+
+                val = min(val, ab)
+                beta = min(beta, val)
+                if val < alpha:
+                    break
+
+
+        return val
+        
+
+
+
 
 def get_all_possible_outcomes(state : Board):
 
@@ -394,51 +459,6 @@ def calc_reward(state: Board, step,action):
     
 
 
-
-# Alpha Beta pruning algorithm, best_move is modified in place
-def alphabeta(state: Board, depth: int, max_depth: int, player: int, alpha, beta, best_move: BestMove, action=None, heuristic: DQN = None):
-
-    if depth == max_depth or state.is_finished():
-        temp = torch.tensor(state.m).float()
-        temp = temp[None, None]
-        return heuristic(temp)
-
-    actions = state.get_actions()
-    val = - player * INF
-    while 1:
-
-        try:
-            act = next(actions)
-        except StopIteration:
-            break
-
-        temp = state.clone()
-        temp = temp.play_action(act)
-
-        ab = alphabeta(temp, depth + 1, max_depth, -player, alpha,
-                       beta, best_move, action=act, heuristic=heuristic)
-
-        if player == 1:
-
-            if depth == 0 and ab > val:
-                best_move.update(act)
-
-            val = max(val, ab)
-            alpha = max(alpha, val)
-            if val > beta:
-                break
-
-        else:
-
-            if depth == 0 and ab < val:
-                best_move.update(act)
-
-            val = min(val, ab)
-            beta = min(beta, val)
-            if val < alpha:
-                break
-
-    return val
 
 
 

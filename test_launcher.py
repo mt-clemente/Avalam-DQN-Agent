@@ -8,57 +8,62 @@ import parse
 #TODO: Try to multithread (go back to Popen + wait for all process to finish at then end. Maybe not doable for model optimization)
 
 
+try:
+    sdout_file = f'logs/stdout/stdout_{datetime.now()}' 
 
-sdout_file = f'logs/stdout/stdout_{datetime.now()}' 
+    #chose ports
+    port1 = 8668
+    port2 = 8669
 
-#chose ports
-port1 = 8668
-port2 = 8669
-
-testing_player = 1
-
-
-if testing_player == 2:
-    port2,port1 = port1,port2
+    testing_player = 2
 
 
 
-#initialize agents
-sp1 = subprocess.Popen(f"python3 tester.py -b localhost --port {port1}",shell=True,stdout=subprocess.DEVNULL)
-sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-time.sleep(5)
-
-#test parameters
-episodes = 50
-start = time.time()
-
-files=[]
-wins = 0
-for i in range(episodes):
-    t = datetime.now()
-    p = subprocess.Popen(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=subprocess.PIPE)
-    out,err = p.communicate()
-    score = out.decode().rpartition('Score')[2]
-    score = int(parse.parse("{} .{}", score)[0])
-    if score > 0:
-        wins += 1
-        print(f"episode {i} WON - s = {score}")
-    else:
-        print(f"episode {i} LOST  - s = {score}")
 
 
+    #initialize agents
+    sp1 = subprocess.Popen(f"python3 tester.py -b localhost --port {port1}",shell=True,stderr=subprocess.DEVNULL)
+    sp2 = subprocess.Popen(f"python3 tester.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    time.sleep(5)
 
-end = time.time()
+    #test parameters
+    episodes = 100
+    start = time.time()
 
-print(f'winrate : {wins/episodes * 100}% on {episodes} games')
+    if testing_player == 2:
+        port2,port1 = port1,port2
+
+    files=[]
+    wins = 0
+    for i in range(episodes):
+        t = datetime.now()
+        p = subprocess.Popen(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=subprocess.PIPE)
+        out,err = p.communicate()
+        score = out.decode().rpartition('Score')[2]
+        score = int(parse.parse("{} .{}", score)[0])
+        if score * (3 - 2 * testing_player)> 0:
+            wins += 1
+            print(f"episode {i} WON - s = {score}")
+        else:
+            print(f"episode {i} LOST  - s = {score}")
 
 
-# noticed some issues when killing processes right away. TODO: fix that
-time.sleep(2)
+
+    end = time.time()
+
+    print(f'winrate : {wins/episodes * 100}% on {episodes} games')
 
 
-# we need to carefully kill all the child process in order to free the ports
-# if we do not, there will be dead processes occupying them which leads to errors
+    # noticed some issues when killing processes right away. TODO: fix that
+    time.sleep(2)
+
+except :
+    pass
+
+    # we need to carefully kill all the child process in order to free the ports
+    # if we do not, there will be dead processes occupying them which leads to errors
+
+
 
 # player 1
 parent_pid = os.getpgid(sp1.pid) 
