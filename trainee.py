@@ -33,6 +33,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 INF = 2**32-1
 
+TIME_PROP = [0.09,0.11,0.11,0.09,0.08,0.08,0.06,0.06]
 
 class MyAgent(Agent):
 
@@ -45,8 +46,14 @@ class MyAgent(Agent):
 
         # ---------- AlphaBeta Param ----------
 
-        self.MAX_DEPTH = 1
-        self.BEAM_WIDTH = 5
+        # /!\ NOT MAX AB DEPTH - if this this depth is reached, BEAM_WIDTH will be incremented (by a certain
+        # calculated k)
+        # if some time is left after incrementing, then BW will be decremented.
+        self.TARGET_DEPTH = [9] * 13
+        self.BEAM_WIDTH = 6
+        self.PLAY_TIME = None
+        self.start_time = None
+        self.TIME_BREAK_FLAG = False
 
         # ---------- DQN init ----------
 
@@ -54,18 +61,17 @@ class MyAgent(Agent):
         self.Transition = namedtuple('Transition',
                                      ('state', 'next_state', 'reward','weights','indices'))
 
-        print(f"CUDA available : {torch.cuda.is_available()}")
         self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu")
+            "cuda" if torch.cuda.is_available() and _train else "cpu")
 
         self.num_episode = 0
         self.BATCH_SIZE = 64
         self.GAMMA = 0.95
         self.EPS_START = 0.9
         self.EPS_END = 0.05
-        self.EPS_DECAY = 800
+        self.EPS_DECAY = 1500
         self.TRAIN_FREQ = 20
-        self.TARGET_UPDATE = 5
+        self.TARGET_UPDATE = 25
         self.steps_done = 0
         self.eog_flag = 0
         self.BACTH_ROUNDS = 20
@@ -73,8 +79,8 @@ class MyAgent(Agent):
         board_width = 9
         self.lr = 3 * 10 ** -4
 
-        self.alpha = 1.8
-        self.beta = 0.4
+        self.alpha = 0.7
+        self.beta = 0.5
         self.prio_epsilon = 1e-6
 
 
@@ -109,7 +115,7 @@ class MyAgent(Agent):
 
         self.optimizer = optim.Adam(self.policy_net.parameters(),amsgrad=True,lr =self.lr)
         self.memory = PrioritizedReplayMemory(
-            size = 100000,
+            size = 400000,
             Transition = self.Transition,
             alpha = self.alpha,
             batch_size=self.BATCH_SIZE
@@ -119,8 +125,13 @@ class MyAgent(Agent):
 
     def play(self, percepts, player, step, time_left):
 
+        
+        if step == 1 or step == 2 or step == 2 * len(TIME_PROP) -1  or step == 2 * len(TIME_PROP):
+            self.PLAY_TIME = time_left
 
 
+        self.TIME_BREAK_FLAG = False
+        self.start_time = datetime.now()
 
         if player == 1:
             board: Board = dict_to_board(percepts)
@@ -131,21 +142,27 @@ class MyAgent(Agent):
 
         # play normally  using the policy net as heuristic
         if not self._train:
-
             self.policy_net.eval()
             with torch.no_grad():
                 if self._test:
+                    t = datetime.now()
                     self.alphabeta(
                             board,
                             0,
-                            max_depth=self.MAX_DEPTH,
                             player=1,
                             alpha=-INF,
                             beta=INF,
                             best_move=best_move,
+                            step=step
                             )
+
+                    self.update_depth(step)
+                        
+                    print(time_left,(datetime.now() - t).total_seconds()," SCORE ",board.get_score()," TD = ",self.TARGET_DEPTH, " TIMEBRK :",self.TIME_BREAK_FLAG)
+
+                    return best_move.move
                     
-                elif random.random() > 0.75:
+                elif random.random() < 0.95:
                 
                     best_move.update(self.greed(board))
                     return best_move.move
@@ -196,10 +213,11 @@ class MyAgent(Agent):
         
         
         # Update the target network and checkpoint the policy net
-        if self.num_episode % self.TARGET_UPDATE * self.TRAIN_FREQ == 0:
+        if self.num_episode % (self.TARGET_UPDATE * self.TRAIN_FREQ) == 0:
 
             self.target_net.load_state_dict(self.policy_net.state_dict())
             torch.save(self.policy_net.state_dict(), f'models/currDQN.pt')
+            torch.save(self.policy_net.state_dict(), f'models/checkpoint/model_{self.num_episode}.pt')
 
 
 
@@ -217,15 +235,7 @@ class MyAgent(Agent):
 
             transitions = self.memory.sample(self.beta)
 
-            batch = transitions#self.Transition(*zip(*transitions))
-            # Compute a mask of non-final states and concatenate the batch elements
-            # (a final state would've been the one after which simulation ended)
-            """ non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                                    batch.next_state)), device=self.device, dtype=torch.bool)
-
-            non_final_next_states = torch.cat([s for s in batch.next_state
-                                            if s is not None]) """
-
+            batch = transitions
 
             state_batch =  torch.from_numpy(batch.state).float().unsqueeze(1).to(self.device)
             reward_batch =  torch.from_numpy(batch.reward).to(self.device)
@@ -309,16 +319,14 @@ class MyAgent(Agent):
         # greedy epsilon policy
         eps_threshold = self.EPS_END + (self.EPS_START - self.EPS_END) * \
             np.exp(-1. * self.num_episode / self.EPS_DECAY)
-
-        self.writer.add_scalar("Epsilon",eps_threshold,self.steps_done)
+        
+        if self._train:
+                    self.writer.add_scalar("Epsilon",eps_threshold,self.steps_done)
         self.steps_done += 1
 
         # using policy net
-        if random.random() < 1 + eps_threshold:
+        if random.random() > eps_threshold:
             
-            """ abs(alphabeta(board, 0, max_depth=self.MAX_DEPTH, player=1, alpha=-
-                INF, beta=INF, best_move=best_move, heuristic=self.policy_net))
-            """
             best_move.update(self.greed(board))
 
             if best_move.move == None:
@@ -344,13 +352,15 @@ class MyAgent(Agent):
 
     # Alpha Beta pruning algorithm, best_move is modified in place.
 
-    def alphabeta(self, state: Board, depth: int, max_depth: int, player: int, alpha, beta, best_move: BestMove):
+    def alphabeta(self, state: Board, depth: int, player: int, alpha: float, beta: float, best_move: BestMove, step: int):
 
 
         if state.is_finished():
-            return np.sign(state.get_score()) * 500
+            return np.sign(state.get_score()) * 100
 
-        if depth == max_depth:
+
+        # test is okay because of pyhotn lazy bool evaluation         
+        if  (step - 1) // 2 < len(self.TARGET_DEPTH) and  depth == self.TARGET_DEPTH[(step - 1)//2]:
             return self.policy_net(torch.tensor(state.m).float()[None,None])
 
 
@@ -360,28 +370,32 @@ class MyAgent(Agent):
         outcomes_np = get_all_possible_outcomes(state)
         outcomes = torch.from_numpy(outcomes_np).unsqueeze(1).float().to(self.device)
         heur_vals = self.policy_net(outcomes).cpu().numpy()
-                
+        heur_vals = heur_vals.reshape((heur_vals.shape[0],))
 
-    
+
         # beam search of width self.BEAM_WIDTH
-        try:
-            part_idx = np.argpartition(heur_vals, self.BEAM_WIDTH)[:self.BEAM_WIDTH]
-        
-        #if the index is out of range it means that the beam covers all the leafs
-        except ValueError:
-            part_idx = np.arange(len(outcomes_np))
-
+        if step < 1 + 2 * len(TIME_PROP):
+            part_idx = np.argsort(- player * heur_vals)[:self.BEAM_WIDTH]
+        else:  
+            part_idx = np.argsort(- player * heur_vals)
 
         val = - player * INF
 
         for idx in part_idx:
 
+            if depth != 0 and self.timebreak(step):
+                if val != - player * INF:
+                    return val
+                else:
+                    return self.policy_net(torch.tensor(state.m).float()[None,None])
+
+
             act = actions[idx]
             temp = state.clone()
             temp = temp.play_action(act)
 
-            ab = self.alphabeta(temp, depth + 1, max_depth, -player, alpha,
-                        beta, best_move)
+            ab = self.alphabeta(temp, depth + 1, -player, alpha,
+                        beta, best_move,step)
 
             if player == 1:
 
@@ -406,6 +420,37 @@ class MyAgent(Agent):
         return val
         
 
+    def timebreak(self,step):
+
+        # return False
+
+        # choose allocated time based on time needed per move according to TIME_PROP
+        if step <= 2 * len(TIME_PROP):
+            alloc_mv_time = self.PLAY_TIME * TIME_PROP[(step-1) // 2]
+
+        # allocated evenly remaining time for the rest of the moves
+        else:
+            alloc_mv_time = self.PLAY_TIME / (19 - len(TIME_PROP))    
+        
+        if (datetime.now() - self.start_time).total_seconds() > alloc_mv_time:
+
+            self.TIME_BREAK_FLAG = True
+            return True
+
+        return False
+
+    def update_depth(self,step):
+
+        if (step - 1) // 2 < len(self.TARGET_DEPTH):
+            if self.TIME_BREAK_FLAG:
+                self.TARGET_DEPTH[(step-1)//2] -= 1
+            else:
+                self.TARGET_DEPTH[(step-1)//2] += 1
+
+
+
+
+# ---------- UTIL METHODS ----------
 
 
 
@@ -460,6 +505,7 @@ def calc_reward(state: Board, step,action):
 
 
 
+# ----------- MAIN CALL -----------
 
 
 

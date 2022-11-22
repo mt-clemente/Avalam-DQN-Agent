@@ -9,60 +9,70 @@ import parse
 
 
 try:
-    sdout_file = f'logs/stdout/stdout_{datetime.now()}' 
 
     #chose ports
     port1 = 8668
     port2 = 8669
 
-    testing_player = 2
+    as_player = 1
 
 
 
 
 
     #initialize agents
-    sp1 = subprocess.Popen(f"python3 tester.py -b localhost --port {port1}",shell=True,stderr=subprocess.DEVNULL)
-    sp2 = subprocess.Popen(f"python3 tester.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    os.system("cp saved_models/22nov/currDQN.pt models/currDQN.pt")
+    sp1 = subprocess.Popen(f"python3 tester.py -b localhost --port {port1}",shell=True,stderr = subprocess.DEVNULL)
+
+    time.sleep(5)
+
+    os.system("cp saved_models/17nov-+14400/95vgreedy.pt models/currDQN.pt")
+    # os.system("cp saved_models/18nov-23000/model_21900.pt models/currDQN.pt")
+    sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr = subprocess.DEVNULL)
     time.sleep(5)
 
     #test parameters
     episodes = 100
     start = time.time()
 
-    if testing_player == 2:
+    if as_player == 2:
         port2,port1 = port1,port2
 
-    files=[]
     wins = 0
+    played = 0
     for i in range(episodes):
         t = datetime.now()
-        p = subprocess.Popen(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=subprocess.PIPE)
+        p = subprocess.Popen(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui --time 900",shell=True,stdout=subprocess.PIPE)
         out,err = p.communicate()
         score = out.decode().rpartition('Score')[2]
         score = int(parse.parse("{} .{}", score)[0])
-        if score * (3 - 2 * testing_player)> 0:
+        if score * (3 - 2 * as_player)> 0:
             wins += 1
             print(f"episode {i} WON - s = {score}")
         else:
             print(f"episode {i} LOST  - s = {score}")
+        played += 1
 
 
 
     end = time.time()
 
-    print(f'winrate : {wins/episodes * 100}% on {episodes} games')
 
 
     # noticed some issues when killing processes right away. TODO: fix that
-    time.sleep(2)
 
 except :
+    pass
+
+try:
+    print(f'winrate : {wins/played * 100}% on {played} games')
+except:
     pass
 
     # we need to carefully kill all the child process in order to free the ports
     # if we do not, there will be dead processes occupying them which leads to errors
 
+time.sleep(2)
 
 
 # player 1

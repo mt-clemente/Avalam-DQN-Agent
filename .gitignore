@@ -8,5 +8,6 @@ ssh/vm2/*
 rainbow-is*
 stdout/
 runs
+models/checkpoint
 *.zip
 !*.gitkeep

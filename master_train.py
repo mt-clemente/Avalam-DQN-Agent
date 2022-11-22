@@ -14,7 +14,8 @@ def train(gen: int, nb_ep: int, init_model = None,port = 8010):
     try :
         #chose ports change them just to be safe in case a port doesnt get freed
         port1 = port + 2 * gen
-        port2 = port + 1 + 2 * gen
+        port_trainer = port + 1 + 2 * gen
+        prot_greedy = port - 10
         #initialize agents
         # they both start with the same model but only one is training, the other is idle.
 
@@ -22,13 +23,15 @@ def train(gen: int, nb_ep: int, init_model = None,port = 8010):
 
         player = 1
         sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True,stderr=subprocess.DEVNULL)
+
+        time.sleep(2)
         
-        if init_model:
-            sp2 = subprocess.Popen(f"python3 {init_model}.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        
-        else:
-            os.system(f"cp session_models/model_{gen}.pt models/currDQN.pt")
-            sp2 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {prot_greedy}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    
+        time.sleep(2)
+
+        os.system("cp saved_models/18nov-23000/model_21900.pt  models/currDQN.pt")
+        sp3 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port_trainer}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         
         
         #wait for agents to be running
@@ -42,12 +45,20 @@ def train(gen: int, nb_ep: int, init_model = None,port = 8010):
         for i in range(nb_ep):
             
             #random playing first or second
-            if random.random() > 0.5:
-                port1, port2 = port2, port1
-                player = player%2 + 1
+            if random.random() > 0.2:
+                port2 = port_trainer
+            else:
+                port2 = prot_greedy
 
             t = datetime.now()
-            subprocess.call(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=subprocess.DEVNULL)
+            if random.random() > 0.5:
+                player = 1
+                subprocess.call(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui",shell=True,stdout=subprocess.DEVNULL)
+            else:
+                player = 2
+                subprocess.call(f"python3 game.py http://localhost:{port2} http://localhost:{port1} --no-gui",shell=True,stdout=subprocess.DEVNULL)
+
+            
 
             print(f"GEN {gen} -- episode {i} done in {datetime.now() - t} as player {player}")
 
@@ -89,10 +100,10 @@ def train(gen: int, nb_ep: int, init_model = None,port = 8010):
 # ---------------  GENERATION TRAINING --------------- 
 
 
-PORT = 8020
-NB_GEN = 0
-EP_PER_GEN = 14400
-INIT_MODEL = "greedy_player"
+PORT = 8120
+NB_GEN = 1
+EP_PER_GEN = 35000
+INIT_MODEL = None
 
 
 date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
