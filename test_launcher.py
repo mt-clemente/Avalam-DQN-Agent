@@ -5,12 +5,13 @@ import os
 import psutil
 import parse
 
-#TODO: Try to multithread (go back to Popen + wait for all process to finish at then end. Maybe not doable for model optimization)
-
+# This file is a chain test launcher
+# Its only purpose is to check our model's
+# performance against other agents.
 
 try:
 
-    #chose ports
+    #choose ports
     port1 = 8668
     port2 = 8669
 
@@ -69,11 +70,12 @@ try:
 except:
     pass
 
-    # we need to carefully kill all the child process in order to free the ports
-    # if we do not, there will be dead processes occupying them which leads to errors
 
 time.sleep(2)
 
+# we need to carefully kill all the child process in order to free the ports
+# if we do not, there will be dead processes occupying them which prevents us from using
+# them, uses mem etc.
 
 # player 1
 parent_pid = os.getpgid(sp1.pid) 

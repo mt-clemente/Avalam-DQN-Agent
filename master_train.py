@@ -1,13 +1,20 @@
 from datetime import datetime
 import random
 import subprocess
-import sys
 import time
 import os
 import psutil
 
 
-def train(gen: int, nb_ep: int, init_model = None,port = 8010):
+# This file is used to train our modelit can be used to launch a round of
+# training or multiple generations. For later generations, we can train
+# against different oponents, the trained player plays randomly as 
+# player 1 or player 2.
+# If no gen
+
+
+
+def train(gen: int, nb_ep: int,port = 8010, trainer: str = None):
 
 
 
@@ -22,17 +29,20 @@ def train(gen: int, nb_ep: int, init_model = None,port = 8010):
 
 
         player = 1
-        sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True,stderr=subprocess.DEVNULL)
+        sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True)
 
-        time.sleep(2)
+        time.sleep(5)
         
-        sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {prot_greedy}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {prot_greedy}",shell=True)
     
-        time.sleep(2)
-
-        os.system("cp saved_models/18nov-23000/model_21900.pt  models/currDQN.pt")
-        sp3 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port_trainer}",shell=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        time.sleep(5)
+        if trainer: 
+            os.system(f"cp trainer  models/currDQN.pt")
+            sp3 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port_trainer}",shell=True)
         
+        else:
+            os.system(f"cp models/currDQN.pt session_models/model_{gen + 1}.pt ")
+            sp3 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port_trainer}",shell=True)
         
         #wait for agents to be running
         time.sleep(5)
@@ -87,8 +97,16 @@ def train(gen: int, nb_ep: int, init_model = None,port = 8010):
     for child in parent.children(recursive=True):
         child.kill()
     parent.kill()
+    
+    if trainer:
+        # player 2
+        parent = psutil.Process(sp3.pid)
+        for child in parent.children(recursive=True):
+            child.kill()
+        parent.kill()
 
     print("\nPROCESSES TERMINATED")
+    
     # save the current model to use as trainer for the next generation
     os.system(f"cp models/currDQN.pt session_models/model_{gen + 1}.pt ")
     

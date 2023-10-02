@@ -1,31 +1,14 @@
-from collections import deque
 import random
-from types import SimpleNamespace
 import torch.nn as nn
 import torch.nn.functional as F
 from avalam import Board
 from segment_tree import MinSegmentTree, SumSegmentTree
-import json
 import numpy as np
 
-class ReplayMemory():
-
-    def __init__(self, capacity,Transition):
-        self.memory = deque([], maxlen=capacity)
-        self.Transition = Transition
-
-    def push(self, *args):
-        """Save a transition"""
-        print(*args)
-        self.memory.append(self.Transition(*args))
-
-    def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
-
-    def __len__(self):
-        return len(self.memory)
 
 
+
+# Memory buffer with PER
 class PrioritizedReplayMemory():
 
     def __init__(self, size,Transition,alpha, batch_size):
@@ -136,7 +119,8 @@ class PrioritizedReplayMemory():
     def __len__(self):
         return self.size
         
-
+        
+# Neural Network used in our modek
 class DQN(nn.Module):
 
     def __init__(self, h, w, outputs,device):

@@ -35,6 +35,7 @@ INF = 2**32-1
 
 TIME_PROP = [0.09,0.11,0.11,0.09,0.08,0.08,0.06,0.06]
 
+
 class MyAgent(Agent):
 
     """My Avalam agent."""
@@ -46,9 +47,10 @@ class MyAgent(Agent):
 
         # ---------- AlphaBeta Param ----------
 
-        # /!\ NOT MAX AB DEPTH - if this this depth is reached, BEAM_WIDTH will be incremented (by a certain
-        # calculated k)
-        # if some time is left after incrementing, then BW will be decremented.
+        # As we dont know exactly how fast the computer the agent is run works,
+        # the max depth is mutable, if some time is left after finishing alphabeta
+        # the target depth for this move will increase. On the other hand,
+        # if time runs out before the end, target depth will decrease.
         self.TARGET_DEPTH = [9] * 13
         self.BEAM_WIDTH = 6
         self.PLAY_TIME = None
@@ -70,10 +72,13 @@ class MyAgent(Agent):
         self.EPS_START = 0.9
         self.EPS_END = 0.05
         self.EPS_DECAY = 1500
-        self.TRAIN_FREQ = 20
-        self.TARGET_UPDATE = 25
+        self.TARGET_UPDATE = 25 # number of episodes between target network updates
         self.steps_done = 0
         self.eog_flag = 0
+
+        # optimize our model every TRAIN_FREQ episodes for BATCH_ROUNDS gives
+        # us better stability and more importantly is more optimized for our GPU
+        self.TRAIN_FREQ = 20
         self.BACTH_ROUNDS = 20
         board_height = 9
         board_width = 9
@@ -91,13 +96,13 @@ class MyAgent(Agent):
 
         self.buffer = MoveBuffer()
 
-        # logging
+        # tensorboard logging
         if _train:
             self.writer = SummaryWriter()
         self.ep_score = 0
 
 
-        # try to load the model obtained from previous training
+        # try to load the model obtained from previous training or create a new one
         try:
             self.policy_net = DQN(board_height, board_width,
                                   1, self.device).to(self.device)
@@ -125,7 +130,7 @@ class MyAgent(Agent):
 
     def play(self, percepts, player, step, time_left):
 
-        
+        # used to divide time between steps        
         if step == 1 or step == 2 or step == 2 * len(TIME_PROP) -1  or step == 2 * len(TIME_PROP):
             self.PLAY_TIME = time_left
 
@@ -133,6 +138,8 @@ class MyAgent(Agent):
         self.TIME_BREAK_FLAG = False
         self.start_time = datetime.now()
 
+
+        #to help the network train, we always play the positive values
         if player == 1:
             board: Board = dict_to_board(percepts)
         else:
@@ -142,8 +149,12 @@ class MyAgent(Agent):
 
         # play normally  using the policy net as heuristic
         if not self._train:
+
+            #deactivate batch norm layers
             self.policy_net.eval()
             with torch.no_grad():
+
+                #if the model is being tested, we play using the full algorithm
                 if self._test:
                     t = datetime.now()
                     self.alphabeta(
@@ -169,11 +180,14 @@ class MyAgent(Agent):
                 else:
                     return random.choice(list(board.get_actions()))        
 
+        #activate batch norm layers
         self.policy_net.train()
 
 
         # ----------- TRAIN THE MODEL -----------
 
+
+        # the move is selected and updated in place
         self.update_best_move(board = board,best_move = best_move)
 
         reward = calc_reward(board.clone(),step, best_move.move)
@@ -183,7 +197,8 @@ class MyAgent(Agent):
         next_board = board.clone()
         next_board.play_action(best_move.move)
 
-
+        # if a move was played before, the current state is the 'environement's' reaction
+        # we can push it into our memory, and store the first half of the next experience
         if self.buffer.statem != None:
 
             self.memory.push(
@@ -224,6 +239,8 @@ class MyAgent(Agent):
         return best_move.move
 
 
+
+
     def optimize_model(self,batch_number):
 
 
@@ -232,10 +249,8 @@ class MyAgent(Agent):
             if len(self.memory) < self.BATCH_SIZE:
                 return
 
-
-            transitions = self.memory.sample(self.beta)
-
-            batch = transitions
+            # PER proportional sample
+            batch = self.memory.sample(self.beta)
 
             state_batch =  torch.from_numpy(batch.state).float().unsqueeze(1).to(self.device)
             reward_batch =  torch.from_numpy(batch.reward).to(self.device)
@@ -248,36 +263,43 @@ class MyAgent(Agent):
 
             self.writer.add_scalar("Q values/State Values",torch.mean(state_action_values).item(),self.steps_done * self.BACTH_ROUNDS + i)
 
-            # Compute V(s_{t+1}) for all next states.
+
+            # Compute Q(s_{t+1}) for all next states.
             # Expected values of actions for non_final_next_states are computed based
             # on the "older" target_net; selecting their best reward with max(1)[0].
             # This is merged based on the mask, such that we'll have either the expected
             # state value or 0 in case the state was final.
+            # The eval part is not very readable or intuitive, but it is the 
+            # faster alternative of all solutions found with our GPU. 
+
             next_state_values = torch.zeros(self.BATCH_SIZE, device=self.device)
             mask = [i for i in range(self.BATCH_SIZE) if batch.next_state[i]]
-
-
             
-
             with torch.no_grad():
 
                 outcomes = [get_all_possible_outcomes(batch.next_state[i]) for i in mask]
                 sizes = [len(o) for o in outcomes]
                 
+                # concat all the outcomes along the axis considered as batch_size by pytorch conv2D
                 temp = np.concatenate(outcomes,axis=0)
 
                 outcomes = torch.from_numpy(temp).unsqueeze(1).float().to(self.device)
 
+                # Evaluate everything in one go, gives us better computation performance and
+                # better training with batch normalization than evaluating each experience separatelt
                 target_vals = self.target_net(outcomes)
 
+                # each state has a different number of outputs so just reshaping will not do
+                # the trick. We need to use sizes the reconstruct lists of outcome Q values 
+                # corresponding to each initial state
                 indices = torch.zeros((len(sizes),max(sizes)),dtype=torch.int64,device=self.device)
-                
                 k = 0
                 for i in range(len(sizes)):
                     indices[i,0:sizes[i]] = torch.arange(k,k+sizes[i],dtype=torch.int64,device=self.device)
                     k+= sizes[i]
                 
-
+                # repeat the values to gather them. Not memory efficient but the
+                # best we can do time-wise
                 rep = torch.transpose(target_vals.repeat((1,len(sizes))),0,1)
                 grouped_target_vals = torch.gather(rep,1,indices)
                 
@@ -292,7 +314,7 @@ class MyAgent(Agent):
             self.writer.add_scalar("Performance/Batch Rewards",torch.mean(reward_batch),self.steps_done * self.BACTH_ROUNDS + i)
 
 
-            # Compute Huber loss
+            # Compute Huber loss, gave slightly better performance than basic MSE
             eltwise_criterion = nn.HuberLoss(reduction="none")
             eltwise_loss = eltwise_criterion(state_action_values,
                             expected_state_action_values.unsqueeze(1))
@@ -300,10 +322,11 @@ class MyAgent(Agent):
             loss = torch.mean(eltwise_loss * weights)
 
             self.writer.add_scalar("Loss",torch.mean(loss).item(),self.steps_done * self.BACTH_ROUNDS + i)
-            # Optimize the model
 
+            # Optimize the model
             self.optimizer.zero_grad()
             loss.backward()
+            #gradient clipping
             for param in self.policy_net.parameters():
                 param.grad.data.clamp_(-1, 1)
             self.optimizer.step()
@@ -313,6 +336,9 @@ class MyAgent(Agent):
             new_priorities = prio_loss + self.prio_epsilon
             self.memory.update_priorities(batch.indices, new_priorities)
 
+
+    # update the best_move object using the epsilon greedy policy
+    # the policy is updated every episode but the epsilon decay is tuned accordingly
 
     def update_best_move(self, board, best_move) -> None:
         
@@ -338,7 +364,7 @@ class MyAgent(Agent):
             best_move.update(act)
 
 
-
+    # efficient greedy choice of a move using the onlin policy net
     def greed(self, board: Board):
 
         outcomes_np = get_all_possible_outcomes(board)
@@ -351,15 +377,14 @@ class MyAgent(Agent):
 
 
     # Alpha Beta pruning algorithm, best_move is modified in place.
-
     def alphabeta(self, state: Board, depth: int, player: int, alpha: float, beta: float, best_move: BestMove, step: int):
 
-
+        # exacerbate win or lose moves
         if state.is_finished():
             return np.sign(state.get_score()) * 100
 
 
-        # test is okay because of pyhotn lazy bool evaluation         
+        # test is okay because of python lazy bool evaluation         
         if  (step - 1) // 2 < len(self.TARGET_DEPTH) and  depth == self.TARGET_DEPTH[(step - 1)//2]:
             return self.policy_net(torch.tensor(state.m).float()[None,None])
 
@@ -383,6 +408,7 @@ class MyAgent(Agent):
 
         for idx in part_idx:
 
+            # stop algorithm if running out of time
             if depth != 0 and self.timebreak(step):
                 if val != - player * INF:
                     return val
@@ -439,6 +465,8 @@ class MyAgent(Agent):
 
         return False
 
+
+    # update max depth if alphabeta is computed faster than expected
     def update_depth(self,step):
 
         if (step - 1) // 2 < len(self.TARGET_DEPTH):
@@ -453,7 +481,7 @@ class MyAgent(Agent):
 # ---------- UTIL METHODS ----------
 
 
-
+# most efficient way found to generate all outcomes
 def get_all_possible_outcomes(state : Board):
 
     actions = list(state.get_actions())
@@ -476,7 +504,7 @@ def _play_action(state, action):
     return temp
 
 
-
+# reward system
 def calc_reward(state: Board, step,action):
 
     # the game cannot be finished quicker than 16 moves / player
@@ -506,8 +534,6 @@ def calc_reward(state: Board, step,action):
 
 
 # ----------- MAIN CALL -----------
-
-
 
 if __name__ == "__main__":
     agent_main(MyAgent(_train = True))
