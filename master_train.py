@@ -4,6 +4,7 @@ import subprocess
 import time
 import os
 import psutil
+from config import *
 
 
 # This file is used to train our modelit can be used to launch a round of
@@ -22,27 +23,27 @@ def train(gen: int, nb_ep: int,port = 8010, trainer: str = None):
         #chose ports change them just to be safe in case a port doesnt get freed
         port1 = port + 2 * gen
         port_trainer = port + 1 + 2 * gen
-        prot_greedy = port - 10
+        port_greedy = port - 10
         #initialize agents
         # they both start with the same model but only one is training, the other is idle.
 
 
 
         player = 1
-        sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True)
+        sp1 = subprocess.Popen(f"python3 trainee.py -b localhost --port {port1}",shell=True,stderr=subprocess.DEVNULL)
 
         time.sleep(5)
         
-        sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {prot_greedy}",shell=True)
+        sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port_greedy}",shell=True,stderr=subprocess.DEVNULL)
     
         time.sleep(5)
         if trainer: 
-            os.system(f"cp trainer  models/currDQN.pt")
-            sp3 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port_trainer}",shell=True)
+            os.system(f"cp {trainer}  models/currDQN.pt")
+            sp3 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port_trainer}",shell=True,stderr=subprocess.DEVNULL)
         
         else:
             os.system(f"cp models/currDQN.pt session_models/model_{gen + 1}.pt ")
-            sp3 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port_trainer}",shell=True)
+            sp3 = subprocess.Popen(f"python3 trainer.py -b localhost --port {port_trainer}",shell=True,stderr=subprocess.DEVNULL)
         
         #wait for agents to be running
         time.sleep(5)
@@ -55,10 +56,10 @@ def train(gen: int, nb_ep: int,port = 8010, trainer: str = None):
         for i in range(nb_ep):
             
             #random playing first or second
-            if random.random() > 0.2:
+            if random.random() > GREEDY_PROB:
                 port2 = port_trainer
             else:
-                port2 = prot_greedy
+                port2 = port_greedy
 
             t = datetime.now()
             if random.random() > 0.5:
@@ -118,17 +119,11 @@ def train(gen: int, nb_ep: int,port = 8010, trainer: str = None):
 # ---------------  GENERATION TRAINING --------------- 
 
 
-PORT = 8120
-NB_GEN = 1
-EP_PER_GEN = 35000
-INIT_MODEL = None
-
-
 date = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 
 # For now initialize with greedy as first trainer
-if INIT_MODEL:
-    train(-1,nb_ep=EP_PER_GEN,init_model=INIT_MODEL,port = PORT)
+if INIT_TRAINER_MODEL:
+    train(-1,nb_ep=EP_PER_GEN,trainer=INIT_TRAINER_MODEL,port = PORT)
 
 
 

@@ -31,6 +31,8 @@ import torch
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
+from config import VERBOSE
+
 INF = 2**32-1
 
 TIME_PROP = [0.09,0.11,0.11,0.09,0.08,0.08,0.06,0.06]
@@ -168,8 +170,9 @@ class MyAgent(Agent):
                             )
 
                     self.update_depth(step)
-                        
-                    print(time_left,(datetime.now() - t).total_seconds()," SCORE ",board.get_score()," TD = ",self.TARGET_DEPTH, " TIMEBRK :",self.TIME_BREAK_FLAG)
+                    
+                    if VERBOSE:
+                        print(time_left,(datetime.now() - t).total_seconds()," SCORE ",board.get_score()," TD = ",self.TARGET_DEPTH, " TIMEBRK :",self.TIME_BREAK_FLAG)
 
                     return best_move.move
                     

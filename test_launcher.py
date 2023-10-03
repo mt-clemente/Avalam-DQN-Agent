@@ -5,6 +5,8 @@ import os
 import psutil
 import parse
 
+from config import A1_PATH, A2_PATH, MOVE_TIME, NB_TEST_EP
+
 # This file is a chain test launcher
 # Its only purpose is to check our model's
 # performance against other agents.
@@ -12,8 +14,8 @@ import parse
 try:
 
     #choose ports
-    port1 = 8668
-    port2 = 8669
+    port1 = 8661
+    port2 = 8662
 
     as_player = 1
 
@@ -22,18 +24,18 @@ try:
 
 
     #initialize agents
-    os.system("cp saved_models/22nov/currDQN.pt models/currDQN.pt")
+    os.system(f"cp {A1_PATH} models/currDQN.pt")
     sp1 = subprocess.Popen(f"python3 tester.py -b localhost --port {port1}",shell=True,stderr = subprocess.DEVNULL)
 
     time.sleep(5)
 
-    os.system("cp saved_models/17nov-+14400/95vgreedy.pt models/currDQN.pt")
+    os.system(f"cp {A2_PATH} models/currDQN.pt")
     # os.system("cp saved_models/18nov-23000/model_21900.pt models/currDQN.pt")
     sp2 = subprocess.Popen(f"python3 greedy_player.py -b localhost --port {port2}",shell=True,stdout=subprocess.DEVNULL,stderr = subprocess.DEVNULL)
     time.sleep(5)
-
+    
     #test parameters
-    episodes = 100
+    episodes = NB_TEST_EP
     start = time.time()
 
     if as_player == 2:
@@ -43,7 +45,7 @@ try:
     played = 0
     for i in range(episodes):
         t = datetime.now()
-        p = subprocess.Popen(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui --time 900",shell=True,stdout=subprocess.PIPE)
+        p = subprocess.Popen(f"python3 game.py http://localhost:{port1} http://localhost:{port2} --no-gui --time {MOVE_TIME}",shell=True,stdout=subprocess.PIPE)
         out,err = p.communicate()
         score = out.decode().rpartition('Score')[2]
         score = int(parse.parse("{} .{}", score)[0])
